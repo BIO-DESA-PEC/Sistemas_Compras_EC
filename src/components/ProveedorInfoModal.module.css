@@ -1,0 +1,133 @@
+/* Fondo oscuro de todo el viewport */
+.overlay {
+  position: fixed;
+  inset: 0;           /* top:0 right:0 bottom:0 left:0 */
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 24px;
+  z-index: 9999;
+}
+
+/* Caja del modal */
+.modal {
+  background: #ffffff;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 960px;
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.25);
+  overflow: hidden;
+}
+
+/* Header */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px 8px 24px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+  margin: 0;
+}
+
+.closeBtn {
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 999px;
+}
+
+.closeBtn:hover {
+  background: #f3f4f6;
+}
+
+/* Contenido scrolleable */
+.content {
+  padding: 16px 24px 8px 24px;
+  overflow-y: auto;
+}
+
+/* Footer */
+.footer {
+  padding: 12px 24px 16px 24px;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.secondaryBtn {
+  border-radius: 999px;
+  border: 1px solid #d1d5db;
+  padding: 6px 16px;
+  background: #ffffff;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.secondaryBtn:hover {
+  background: #f9fafb;
+}
+
+/* Secciones y grid */
+.section {
+  margin-bottom: 16px;
+}
+
+.sectionTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+}
+
+@media (max-width: 768px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Campos */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.label {
+  font-size: 13px;
+  color: #4b5563;
+}
+
+.input {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  padding: 6px 10px;
+  font-size: 14px;
+  background: #f9fafb;
+  color: #111827;
+}
+
+.input:read-only {
+  cursor: default;
+}

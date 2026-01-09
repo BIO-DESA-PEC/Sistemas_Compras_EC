@@ -1,4 +1,3 @@
-// src/app/layout.tsx
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -6,6 +5,7 @@ import "./globals.css";
 import { auth } from "@/auth";
 import { getUserByEmail } from "@/app/lib/backend";
 import GlobalLayoutShell from "@/components/GlobalLayoutShell";
+import Providers from "./providers";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -27,19 +27,18 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // 🔐 Traemos sesión y usuario SOLO aquí (server)
   const session = await auth();
   const user = session ? await getUserByEmail(session.user.email) : null;
 
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {/* 🧱 Layout global con sidebar + hamburguesa */}
-        <GlobalLayoutShell session={session} user={user}>
-          {children}
-        </GlobalLayoutShell>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        {/* ✅ SessionProvider para que useSession() funcione */}
+        <Providers session={session}>
+          <GlobalLayoutShell session={session} user={user}>
+            {children}
+          </GlobalLayoutShell>
+        </Providers>
       </body>
     </html>
   );

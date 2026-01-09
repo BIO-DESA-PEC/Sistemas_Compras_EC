@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import styles from './Facturas.module.css';
 import { getFacturasSap, getFacturaSapByDraft } from '@/app/lib/backend';
+import { useSession } from "next-auth/react";
+import { getUserByEmail } from "@/app/lib/backend";
 
 // Cargamos el modal solo en cliente
 const FacturaPreviewModal = dynamic(
@@ -117,6 +119,25 @@ export default function FacturasSAPPage() {
     setPreviewData(null);
     loadFacturas();
   };
+const { data: session } = useSession();
+const [lockSoloGasto, setLockSoloGasto] = useState(false);
+
+useEffect(() => {
+  async function loadRole() {
+    try {
+      const email = session?.user?.email;
+      if (!email) return;
+
+      const u = await getUserByEmail(email); // usa TU backend.js
+      const rol = (u?.RolNombre || "").toString().toLowerCase(); // viene del API :contentReference[oaicite:1]{index=1}
+      setLockSoloGasto(rol === "data");
+    } catch (e) {
+      console.error("getUserByEmail role:", e);
+      setLockSoloGasto(false);
+    }
+  }
+  loadRole();
+}, [session?.user?.email]);
 
   // --------- render ----------
   if (loading) {
@@ -253,14 +274,17 @@ export default function FacturasSAPPage() {
 
       {/* Modal de edición del Draft OPCH */}
       <FacturaPreviewModal
-        open={previewOpen}
-        data={previewData}
-        onClose={() => {
-          setPreviewOpen(false);
-          setPreviewData(null);
-        }}
-        onUse={handleUseDraft}
-      />
+  open={previewOpen}
+  data={previewData}
+  onClose={() => {
+    setPreviewOpen(false);
+    setPreviewData(null);
+  }}
+  onUse={handleUseDraft}
+ modo="facturas_sap"
+  lockSoloGasto={lockSoloGasto}
+/>
+
     </main>
   );
 }

@@ -506,3 +506,92 @@
 .metaDot {
   margin: 0 4px;
 }
+.viewInfoBtn {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: #f3f6f9;
+  border: 1px solid #d6dce5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all .2s ease;
+  padding: 0;
+}
+
+/* HOVER */
+.viewInfoBtn:hover {
+  background: #e4ebf5;
+  border-color: #c6d0dd;
+  transform: scale(1.06);
+}
+
+/* ACTIVE CLICK */
+.viewInfoBtn:active {
+  transform: scale(0.96);
+}
+
+/* ICONO */
+.eyeIcon {
+  font-size: 16px;
+  opacity: 0.75;
+  transition: opacity .2s ease;
+}
+
+.viewInfoBtn:hover .eyeIcon {
+  opacity: 1;
+}
+/* Barra horizontal globalizada */
+.globalBar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;          /* 👈 si no cabe, baja a 2 líneas */
+  gap: 10px;
+  margin-top: 12px;         /* 👈 se despega del header */
+  padding: 8px 12px;
+  background: #f3f7ff;
+  border: 1px solid #d7e2ff;
+  border-radius: 10px;
+}
+
+.globalTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  white-space: nowrap;
+}
+
+.globalInput {
+  padding: 6px 8px;
+  border: 1px solid #cdd7f3;
+  background: white;
+  border-radius: 6px;
+  min-width: 90px;          /* más chiquitos */
+  font-size: 13px;
+}
+
+.globalTotal {
+  background: #e9efff;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #c9d5ff;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.globalBtn {
+  padding: 6px 14px;
+  background: #1f7a5b;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: 0.2s;
+  white-space: nowrap;
+}
+
+.globalBtn:hover {
+  background: #166347;
+}

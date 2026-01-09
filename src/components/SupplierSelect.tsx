@@ -25,8 +25,7 @@ export interface Proveedor {
   U_SYP_TIPOPAGO?: string;
   U_SYP_FPAGO?: string;
   U_SYP_PAISPAGO?: string;
-
-  // 🆕 campos SOLO HANA
+  PayTermsGrpCode?: number;
   TipoFacturacion?: string;
   DiasCredito?: number;
   Comentarios?: string;
@@ -35,7 +34,7 @@ export interface Proveedor {
 
 interface ProveedorPickerProps {
   value?: string;
-  onChange?: (nombre: string) => void;
+  onChange?: (nombre: string, proveedor?: Proveedor) => void;
   disabled?: boolean;
 }
 
@@ -209,7 +208,7 @@ export default function ProveedorPicker({
   }, [open]);
 
   const pick = (it: Proveedor) => {
-    onChange?.(it.NombreProveedor);
+    onChange?.(it.NombreProveedor, it);
     setOpen(false);
   };
 
@@ -357,8 +356,12 @@ type CreateForm = Required<
   TipoFacturacion: string;
   DiasCredito: string;
   Comentarios: string;
+  PayTermsGrpCode: string;
+  BankCode: string;
+  BankAccountNo: string;
+  BankAccountName: string;
+  BankIdType: string;
 };
-
 
 interface CreateProveedorModalProps {
   onClose: () => void;
@@ -370,35 +373,170 @@ function CreateProveedorModal({
   onCreated,
 }: CreateProveedorModalProps) {
   const [form, setForm] = useState<CreateForm>({
-  NombreProveedor: '',
-  IdProveedor: '',
-  EmailAddress: '',
-  Phone1: '',
-  Address: '',
-  Country: 'EC',
-  GroupCode: 101,
-  PriceListNum: 1,
-  SalesPersonCode: 5,
-  U_SYP_BPTD: 'C',
-  U_SYP_CONTABILIDAD: 'SI',
-  U_SYP_PARTREL: 'NO',
-  U_SYP_TCONTRIB: '10',
-  U_SYP_ORIGEN_INGRESO: 'NA',
-  U_SYP_TIPOPAGO: '01',
-  U_SYP_FPAGO: '20',
-  U_SYP_PAISPAGO: 'NA',
+    NombreProveedor: '',
+    IdProveedor: '',
+    EmailAddress: '',
+    Phone1: '',
+    Address: '',
+    Country: 'EC',
+    GroupCode: 101,
+    PriceListNum: 1,
+    SalesPersonCode: 5,
+    U_SYP_BPTD: 'C',
+    U_SYP_CONTABILIDAD: 'SI',
+    U_SYP_PARTREL: 'NO',
+    U_SYP_TCONTRIB: '10',
+    U_SYP_ORIGEN_INGRESO: 'NA',
+    U_SYP_TIPOPAGO: '01',
+    U_SYP_FPAGO: '20',
+    U_SYP_PAISPAGO: 'NA',
 
-  // 🆕
-  TipoFacturacion: 'CONTADO',
-  DiasCredito: '0',
-  Comentarios: '',
-});
+    // 🆕
+    TipoFacturacion: 'CONTADO',
+    DiasCredito: '0',
+    Comentarios: '',
+    PayTermsGrpCode: '',
+    // 🆕 bancarios
+    BankCode: '',
+    BankAccountNo: '',
+    BankAccountName: '',
+    BankIdType: 'CEDULA',
+  });
 
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState('');
+  const [isPassport, setIsPassport] = useState(false);
+  type PaymentTerm = {
+  GroupNum: number;
+  PymntGroup: string;
+  ExtraDays: number;
+};
+
+const [terms, setTerms] = useState<PaymentTerm[]>([]);
+const [termsError, setTermsError] = useState<string | null>(null);
+const [certFile, setCertFile] = useState<File | null>(null);
+
+useEffect(() => {
+  const loadTerms = async () => {
+    try {
+      setTermsError(null);
+      const res = await fetch(`${API_URL}/condiciones-pago`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json: PaymentTerm[] = await res.json();
+      setTerms(json || []);
+    } catch (e) {
+      console.error('[Proveedor] error cargando OCTG', e);
+      setTermsError('No se pudieron cargar las condiciones de pago');
+    }
+  };
+  loadTerms();
+}, []);
 
   const set = <K extends keyof CreateForm>(k: K, v: CreateForm[K]) =>
     setForm((prev) => ({ ...prev, [k]: v }));
+
+  // 🔥 Valida CI/RUC y autollenar nombre (si NO es pasaporte)
+  const handleIdProveedor = async (value: string) => {
+    // siempre guardamos lo que escribe
+    set('IdProveedor', value);
+    setErr('');
+
+    // Si está marcado PASAPORTE, NO validamos nada
+    if (isPassport) {
+      set('U_SYP_BPTD', 'P');
+      return;
+    }
+
+    // Tipo de documento desde el select
+    const docType = (form.U_SYP_BPTD || '').toUpperCase();
+
+    // Si el select tiene algo distinto de C/R (ej. P), no validamos tampoco
+    if (docType && docType !== 'C' && docType !== 'R') {
+      return;
+    }
+
+    const num = value.trim();
+
+    // Detectar tipo de documento (prioridad: lo que haya en el select)
+    let tipoDoc: 'C' | 'R' | null = null;
+
+    if (docType === 'C' || docType === 'R') {
+      tipoDoc = docType as 'C' | 'R';
+    } else {
+      if (/^\d{10}$/.test(num)) tipoDoc = 'C'; // Cédula
+      if (/^\d{13}$/.test(num)) tipoDoc = 'R'; // RUC
+    }
+
+    if (!tipoDoc) {
+      // aún no está completo o no es C/R
+      return;
+    }
+
+    try {
+      const url = `${API_URL}/validar-id?numero=${num}&tipo=${tipoDoc}`;
+      console.log('[Proveedor] llamando a', url);
+
+      const res = await fetch(url);
+      const json: any = await res.json().catch(() => null);
+      console.log('[Proveedor] respuesta validar-id', res.status, json);
+
+      if (!res.ok || !json) {
+        const msg =
+          (json && typeof json.error === 'string' && json.error) ||
+          `Error al validar identificación (HTTP ${res.status})`;
+        setErr(msg);
+        return;
+      }
+
+      const root = 'ok' in json ? json.data : json;
+      if (!root) {
+        setErr('No se recibió información de la identificación');
+        return;
+      }
+
+      let nombreDetectado = '';
+
+      if (tipoDoc === 'C') {
+        // cedula
+        const r =
+          root.data?.response ||
+          root.response ||
+          root;
+
+        if (r) {
+          const nombreCompleto =
+            (r.nombreCompleto as string) ||
+            `${r.nombres || ''} ${r.apellidos || ''}`.trim();
+          nombreDetectado = (nombreCompleto || '').trim();
+        }
+      } else if (tipoDoc === 'R') {
+        // RUC
+        const mainArr = root.data?.main || root.main || [];
+        const main = Array.isArray(mainArr) ? mainArr[0] : mainArr;
+
+        if (main) {
+          nombreDetectado =
+            (main.razonSocial as string) ||
+            (main.razon_social as string) ||
+            (main.nombreFantasiaComercial as string) ||
+            (main.nombre_fantasia_comercial as string) ||
+            '';
+          nombreDetectado = (nombreDetectado || '').trim();
+        }
+      }
+
+      if (nombreDetectado) {
+        set('NombreProveedor', nombreDetectado);
+        set('U_SYP_BPTD', tipoDoc); // solo C/R aquí
+        setErr('');
+      } else {
+        setErr('No se pudo obtener el nombre desde la API');
+      }
+    } catch (e) {
+      console.error('[Proveedor] error validar-id', e);
+      setErr('Error al validar identificación');
+    }
+  };
 
   const submit: React.FormEventHandler<HTMLFormElement> = async (e) => {
     e.preventDefault();
@@ -414,31 +552,54 @@ function CreateProveedorModal({
       GroupCode: form.GroupCode === 102 ? 102 : 101,
       PriceListNum: Number(form.PriceListNum) || 1,
       SalesPersonCode: Number(form.SalesPersonCode) || 5,
-      // 🆕 convertir a lo que espera el backend
       TipoFacturacion: form.TipoFacturacion || undefined,
       DiasCredito:
         form.DiasCredito.trim() === '' ? undefined : Number(form.DiasCredito),
       Comentarios: form.Comentarios || undefined,
+      PayTermsGrpCode:
+      form.PayTermsGrpCode.trim() === ''
+      ? undefined
+      : Number(form.PayTermsGrpCode),
+      // 🆕 datos bancarios
+      BankCode: form.BankCode || undefined,
+      BankAccountNo: form.BankAccountNo || undefined,
+      BankAccountName: form.BankAccountName || undefined,
+      BankIdType: form.BankIdType || undefined,
     };
 
-    setSending(true);
+       setSending(true);
     try {
-      const res = await fetch(API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
+      let res: Response;
+
+      if (certFile) {
+        // 🆕 Enviar multipart con JSON + archivo
+        const fd = new FormData();
+        fd.append("data", JSON.stringify(payload));
+        fd.append("bank_cert", certFile);
+
+        res = await fetch(API_URL, {
+          method: "POST",
+          body: fd,
+        });
+      } else {
+        // JSON normal como antes
+        res = await fetch(API_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+      }
 
       const raw: unknown = await res.json();
 
       if (!res.ok) {
         const msg =
-          typeof raw === 'object' &&
+          typeof raw === "object" &&
           raw !== null &&
-          'error' in raw &&
-          typeof (raw as { error: unknown }).error === 'string'
+          "error" in raw &&
+          typeof (raw as { error: unknown }).error === "string"
             ? (raw as { error: string }).error
             : `Error ${res.status} al crear proveedor`;
         throw new Error(msg);
@@ -448,7 +609,8 @@ function CreateProveedorModal({
       const nombre = created?.NombreProveedor ?? form.NombreProveedor;
       onCreated?.(nombre);
     } catch (e2) {
-      const msg = e2 instanceof Error ? e2.message : 'Error al crear proveedor';
+      const msg =
+        e2 instanceof Error ? e2.message : "Error al crear proveedor";
       setErr(msg);
     } finally {
       setSending(false);
@@ -456,6 +618,30 @@ function CreateProveedorModal({
   };
 
   const stop = (e: React.MouseEvent<HTMLDivElement>) => e.stopPropagation();
+  type BankOption = {
+  BankCode: string;
+  BankName: string;
+  Country: string | null;
+};
+
+const [banks, setBanks] = useState<BankOption[]>([]);
+const [bankError, setBankError] = useState<string | null>(null);
+
+useEffect(() => {
+  const loadBanks = async () => {
+    try {
+      setBankError(null);
+      const res = await fetch(`${API_URL}/bancos`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json: BankOption[] = await res.json();
+      setBanks(json || []);
+    } catch (e) {
+      console.error('[Proveedor] error cargando bancos', e);
+      setBankError('No se pudieron cargar los bancos');
+    }
+  };
+  loadBanks();
+}, []);
 
   const TCONTRIB_OPTIONS = [
     { value: '01', label: '01 - Agente de retención' },
@@ -542,19 +728,43 @@ function CreateProveedorModal({
                 placeholder="Razón social / Nombre"
               />
             </label>
+{/* === RUC/CI + check pasaporte en la MISMA fila === */}
+<label className={styles.field}>
+  <div className={styles.labelRow}>
+    <span className={styles.label}>
+      RUC/CI<span className={styles.req}>*</span>
+    </span>
 
-            <label className={styles.field}>
-              <span className={styles.label}>
-                RUC/CI<span className={styles.req}>*</span>
-              </span>
-              <input
-                className={styles.input}
-                value={form.IdProveedor}
-                onChange={(e) => set('IdProveedor', e.target.value)}
-                required
-                placeholder="Ej. 1790012345001"
-              />
-            </label>
+    <label className={styles.inlineCheck}>
+      <input
+        type="checkbox"
+        checked={isPassport}
+        onChange={(e) => {
+          const checked = e.target.checked;
+          setIsPassport(checked);
+          if (checked) {
+            set('U_SYP_BPTD', 'P');
+            setErr('');
+          } else {
+            set('U_SYP_BPTD', 'C');
+          }
+        }}
+      />
+      <span>Documento pasaporte</span>
+    </label>
+  </div>
+
+  <input
+    className={styles.input}
+    value={form.IdProveedor}
+    onChange={(e) => handleIdProveedor(e.target.value)}
+    required
+    placeholder={
+      isPassport ? 'Número de pasaporte' : 'Ej. 1790012345001'
+    }
+  />
+</label>
+
 
             <label className={styles.field}>
               <span className={styles.label}>Email</span>
@@ -642,18 +852,39 @@ function CreateProveedorModal({
   </small>
 </label>
 
-{/* 🆕 Crédito y facturación */}
 <label className={styles.field}>
-  <span className={styles.label}>Tipo de facturación</span>
+  <span className={styles.label}>Condiciones de pago</span>
   <select
     className={styles.input}
-    value={form.TipoFacturacion}
-    onChange={(e) => set('TipoFacturacion', e.target.value)}
+    value={form.PayTermsGrpCode}
+    onChange={(e) => {
+      const code = e.target.value;
+      set('PayTermsGrpCode', code);
+
+      const term = terms.find(
+        (t) => String(t.GroupNum) === String(code)
+      );
+
+      if (term) {
+        // texto de la condición y días de crédito
+        set('TipoFacturacion', term.PymntGroup || '');
+        set('DiasCredito', String(term.ExtraDays ?? 0));
+      } else {
+        set('TipoFacturacion', '');
+        set('DiasCredito', '0');
+      }
+    }}
   >
-    <option value="CONTADO">Contado</option>
-    <option value="CREDITO">Crédito</option>
-    <option value="MIXTO">Mixto</option>
+    <option value="">Seleccione condición de pago</option>
+    {terms.map((t) => (
+      <option key={t.GroupNum} value={t.GroupNum}>
+        {t.PymntGroup}
+      </option>
+    ))}
   </select>
+  {termsError && (
+    <small className={styles.errorInline}>{termsError}</small>
+  )}
 </label>
 
 <label className={styles.field}>
@@ -661,22 +892,89 @@ function CreateProveedorModal({
   <input
     type="number"
     min={0}
-    className={styles.input}
+    className={`${styles.input} ${styles.inputReadonly}`}
     value={form.DiasCredito}
-    onChange={(e) => set('DiasCredito', e.target.value)}
-    placeholder="Ej. 30"
+    readOnly
   />
 </label>
 
-<label className={`${styles.field} ${styles.span2}`}>
-  <span className={styles.label}>Comentarios (nº cuenta / notas)</span>
-  <textarea
-    className={styles.textarea}
-    rows={3}
-    value={form.Comentarios}
-    onChange={(e) => set('Comentarios', e.target.value)}
-    placeholder="Ej. Cuenta Produbanco 1234567890, contacto, horarios, etc."
+<label className={styles.field}>
+  <span className={styles.label}>Forma de Pago</span>
+  <select
+    className={styles.input}
+    value={form.U_SYP_FPAGO ?? '20'}
+    onChange={(e) =>
+      set('U_SYP_FPAGO', e.target.value.padStart(2, '0'))
+    }
+    required
+  >
+    {FPAGO_OPTIONS.map((o) => (
+      <option key={o.value} value={o.value}>
+        {o.label}
+      </option>
+    ))}
+  </select>
+</label>
+
+{/* 🆕 DATOS BANCARIOS */}
+<div className={styles.sectionTitle}>Datos bancarios</div>
+
+<label className={styles.field}>
+  <span className={styles.label}>Banco (opcional)</span>
+  <select
+    className={styles.input}
+    value={form.BankCode}
+    onChange={(e) => set('BankCode', e.target.value)}
+  >
+    <option value="">Seleccione banco</option>
+    {banks.map((b) => (
+      <option key={b.BankCode} value={b.BankCode}>
+        {b.BankName}
+      </option>
+    ))}
+  </select>
+  {bankError && (
+    <small className={styles.errorInline}>{bankError}</small>
+  )}
+</label>
+
+<label className={styles.field}>
+  <span className={styles.label}>Número de cuenta (opcional)</span>
+  <input
+    className={styles.input}
+    value={form.BankAccountNo}
+    onChange={(e) => set('BankAccountNo', e.target.value)}
+    placeholder="Ej. 22041892323"
   />
+</label>
+
+<label className={styles.field}>
+  <span className={styles.label}>Nombre de la cuenta (opcional)</span>
+  <input
+    className={styles.input}
+    value={form.BankAccountName}
+    onChange={(e) => set('BankAccountName', e.target.value)}
+    placeholder="Ej. MICHELLE TEST"
+  />
+</label>
+
+<label className={styles.field}>
+  <span className={styles.label}>
+    Tipo identificación de la cuenta
+  </span>
+  <select
+    className={styles.input}
+    value={form.BankIdType}
+    onChange={(e) => set('BankIdType', e.target.value)}
+  >
+    <option value="CEDULA">Cédula</option>
+    <option value="RUC">RUC</option>
+    <option value="PASAPORTE">Pasaporte</option>
+    <option value="OTRO">Otro</option>
+  </select>
+  <small className={styles.hint}>
+    Se enviará al campo UserNo1 de la cuenta bancaria del proveedor.
+  </small>
 </label>
 
 
@@ -728,23 +1026,21 @@ function CreateProveedorModal({
               </select>
             </label>
 
-            <label className={styles.field}>
-              <span className={styles.label}>Forma de Pago</span>
-              <select
-                className={styles.input}
-                value={form.U_SYP_FPAGO ?? '20'}
-                onChange={(e) =>
-                  set('U_SYP_FPAGO', e.target.value.padStart(2, '0'))
-                }
-                required
-              >
-                {FPAGO_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            
+              <label className={styles.field}>
+  <span className={styles.label}>Certificado bancario (PDF)</span>
+  <input
+    type="file"
+    accept=".pdf,.jpg,.jpeg,.png"
+    onChange={(e) => {
+      const f = e.target.files?.[0] ?? null;
+      setCertFile(f);
+    }}
+  />
+  <small className={styles.hint}>
+    Se adjuntará al proveedor en SAP y se subirá a SharePoint.
+  </small>
+</label>
 
             {err && (
               <div className={`${styles.alertError} ${styles.span2}`}>

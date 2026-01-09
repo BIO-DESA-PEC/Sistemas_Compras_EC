@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { getFacturaSapByDraft } from '@/app/lib/backend';
 import FacturaPreviewModal from '@/components/FacturaPreviewModal';
+import { useSession } from "next-auth/react";
+import { getUserByEmail } from "@/app/lib/backend";
 
 export default function FacturaSAPDetalle() {
   const { docEntry } = useParams();
