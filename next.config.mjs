@@ -4,10 +4,10 @@ const nextConfig = {
     // ❗ Permite construir aunque haya errores de TypeScript
     ignoreBuildErrors: true,
   },
-  eslint: {
+  //eslint: {
     // Opcional, pero útil si ESLint también está rompiendo el build
-    ignoreDuringBuilds: true,
-  },
+   // ignoreDuringBuilds: true,
+ // },
 };
 
 export default nextConfig;
