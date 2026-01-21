@@ -25,16 +25,20 @@ export default function FacturaPreviewModal({
   data,
   onClose,
   onUse,
-
-  modo,               // "facturas_sap"
-  lockSoloGasto=false // true si rol = Data
+  modo,
+  rolNombre = "",
+  rolId = null,
+  lockSoloGasto = false,
 }) {
-  // ✅ si y solo si: viene de Facturas SAP y rol Data => bloquear todo menos gasto
-  const isLock = modo === 'facturas_sap' && !!lockSoloGasto;
 
   const [clase, setClase] = useState('SERVICIO');
   const [sending, setSending] = useState(false);
   const [msg, setMsg] = useState(null);
+
+  const rol = String(rolNombre || "").toUpperCase();
+  const isAdmin = Number(rolId) === 1 || rol === "ADMINISTRADOR";
+  const isData  = Number(rolId) === 5 || rol === "DATA";
+  const canEditGasto = isAdmin || isData;   // ✅ SOLO estos pueden
 
   /* ===== DIMENSIONES ===== */
   const [dLinea,  setDLinea]  = useState([]); // 1/2/3
@@ -87,17 +91,6 @@ export default function FacturaPreviewModal({
 
   const [cabecera, setCabecera] = useState(() => buildCabecera(data));
 
-  /* ===== INFO CORREO ===== */
-  const infoCorreo = useMemo(() => ({
-    proveedorCod: cabecera.CardCode || '',
-    proveedorNom: cabecera.CardName || '',
-    establecimiento: cabecera.Serie || '',
-    ptoEmision: cabecera.PtoEmi || '',
-    secuencial: cabecera.Secuencial || '',
-    numAtCard: cabecera.NumAtCard || '',
-    docEntry: data?.DocEntry || '',
-  }), [cabecera, data?.DocEntry]);
-
   /* ===== LINEAS ===== */
   const [rows, setRows] = useState(() =>
     ((data?.Lineas || [])).map((ln) => ({
@@ -105,7 +98,7 @@ export default function FacturaPreviewModal({
       ItemCode: ln.ItemCode || '',
       Descripcion: ln.ItemDescription || '',
 
-      // 👉 PARA SERVICIO (se ignoran si ARTICULO)
+      // 👉 PARA SERVICIO
       Cuenta: ln.AccountCode || '',
 
       Cantidad: n2(ln.Quantity ?? 1),
@@ -117,19 +110,49 @@ export default function FacturaPreviewModal({
       CostingCode2: ln.CostingCode2 || '',
       CostingCode3: ln.CostingCode3 || '',
 
-      IdSustentoTributario: ln.U_SYP_CODIDTRD || (d?.Cabecera?.IdSustentoTributario ?? '01'),
+      IdSustentoTributario: ln.U_SYP_CODIDTRD || (data?.Cabecera?.IdSustentoTributario ?? '01'),
       ConceptoGasto: str(ln.ConceptoGasto || ''),
     }))
   );
 
+  /* ============================================
+     ✅ NUEVO: BLOQUEO DEFINITIVO DESPUÉS DE GUARDAR
+     ============================================ */
+
+  // Se pone true cuando Data guarda el gasto en este modal
+  const [finalizado, setFinalizado] = useState(false);
+
+  // Si el borrador ya venía con gasto (cuando reabres), también se bloquea
+  const yaTieneGasto = useMemo(() => {
+    if (modo !== "facturas_sap") return false;
+    return (rows || []).some(r => String(r.ConceptoGasto || "").trim() !== "");
+  }, [modo, rows]);
+
+  // Si está finalizado o ya tenía gasto => solo lectura total
+  const readOnlyTotal = (modo === "facturas_sap") && (finalizado || yaTieneGasto);
+
+  // ✅ Data lock: mientras NO esté finalizado => solo gasto editable
+  const isLock = (modo === 'facturas_sap') && !!lockSoloGasto && !readOnlyTotal;
+
+  /* ===== INFO CORREO ===== */
+  const infoCorreo = useMemo(() => ({
+    proveedorCod: cabecera.CardCode || '',
+    proveedorNom: cabecera.CardName || '',
+    establecimiento: cabecera.Serie || '',
+    ptoEmision: cabecera.PtoEmi || '',
+    secuencial: cabecera.Secuencial || '',
+    numAtCard: cabecera.NumAtCard || '',
+    docEntry: data?.DocEntry || '',
+  }), [cabecera, data?.DocEntry]);
+
   // 🔒 setter cabecera
   const setCab = (k, v) => {
-    if (isLock) return; // 🚫 bloqueo total de cabecera cuando rol Data en Facturas SAP
+    if (isLock || readOnlyTotal) return; // 🚫 bloquear cabecera
     setCabecera(p => ({ ...p, [k]: v }));
   };
 
   /* =========================
-     EFFECTS (SIN returns afuera)
+     EFFECTS
      ========================= */
 
   // 1) Set clase por tipo OC
@@ -142,8 +165,7 @@ export default function FacturaPreviewModal({
     if (tipo === 'ARTICULO' || tipo === 'ARTÍCULO') {
       setClase('ARTICULO');
 
-      // ✅ opcional: mandar correo automático una sola vez
-      if (!correoAutoEnviado && !isLock) {
+      if (!correoAutoEnviado && !isLock && !readOnlyTotal) {
         setCorreoAutoEnviado(true);
         enviarCorreoArticulo();
       }
@@ -151,7 +173,7 @@ export default function FacturaPreviewModal({
       setClase('SERVICIO');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, data?.TipoOC, correoAutoEnviado, isLock]);
+  }, [open, data?.TipoOC, correoAutoEnviado, isLock, readOnlyTotal]);
 
   // 2) Cargar dimensiones
   useEffect(() => {
@@ -203,9 +225,9 @@ export default function FacturaPreviewModal({
     if (!data) return;
 
     setRows((data.Lineas || []).map((ln) => ({
-      ItemCode: ln.ItemCode || '', // ✅ ARTICULO
+      ItemCode: ln.ItemCode || '',
       Descripcion: ln.ItemDescription || '',
-      Cuenta: str(ln.AccountCode || ln.Cuenta || ''), // ✅ SERVICIO
+      Cuenta: str(ln.AccountCode || ln.Cuenta || ''),
 
       Cantidad: n2(ln.Quantity ?? 1),
       Precio: n2(ln.UnitPrice ?? 0),
@@ -219,10 +241,16 @@ export default function FacturaPreviewModal({
       IdSustentoTributario: (ln.U_SYP_CODIDTRD || cabecera.IdSustentoTributario),
       ConceptoGasto: str(ln.ConceptoGasto || ''),
     })));
+
+    // ✅ si abres otro docEntry, resetea finalizado
+    setFinalizado(false);
   }, [data?.DocEntry, cabecera.IdSustentoTributario]);
 
   const updateRow = (ix, patch) => {
-    // ✅ bloqueo total, excepto ConceptoGasto
+    // 🔒 si ya finalizó o ya tenía gasto => nada editable
+    if (readOnlyTotal) return;
+
+    // ✅ bloqueo parcial: solo ConceptoGasto
     if (isLock) {
       const keys = Object.keys(patch || {});
       const onlyGasto = keys.length === 1 && keys[0] === "ConceptoGasto";
@@ -233,7 +261,7 @@ export default function FacturaPreviewModal({
   };
 
   const addRow = () => {
-    if (isLock || clase === 'ARTICULO') return; // 🚫 no permitir agregar líneas
+    if (readOnlyTotal || isLock || clase === 'ARTICULO') return;
     setRows(prev => ([
       ...prev,
       {
@@ -253,7 +281,7 @@ export default function FacturaPreviewModal({
   };
 
   const removeRow = (ix) => {
-    if (isLock || clase === 'ARTICULO') return; // 🚫 no permitir borrar líneas
+    if (readOnlyTotal || isLock || clase === 'ARTICULO') return;
     setRows(prev => prev.filter((_, i) => i !== ix));
   };
 
@@ -341,20 +369,44 @@ export default function FacturaPreviewModal({
           FormaPago: cabecera.FormaPago, TipoPago: cabecera.TipoPago,
           IdSustentoTributario: cabecera.IdSustentoTributario, Comments: cabecera.Comments,
         },
-        Lineas: rows.map(r => ({
-          Descripcion: str(r.Descripcion || 'SERVICIO'),
-          Cuenta: str(r.Cuenta),
-          Cantidad: n2(r.Cantidad),
-          Precio: n2(r.Precio),
-          Descuento: n2(r.Descuento),
-          DiscountPercent: n2(r.Descuento),
-          TaxCode: n2(r.Precio) === 0 ? 'IVA_0' : r.TaxCode,
-          CostingCode: str(r.CostingCode),
-          CostingCode2: str(r.CostingCode2),
-          CostingCode3: str(r.CostingCode3),
-          IdSustentoTributario: str(r.IdSustentoTributario),
-          ConceptoGasto: str(r.ConceptoGasto),
-        })),
+        Lineas: rows.map((r) => {
+          const qty = Math.max(1, Number(r.Cantidad ?? 1) || 1);
+          const price = Number(r.Precio ?? 0) || 0;
+          const disc = Number(r.Descuento ?? 0) || 0;
+
+          if (clase === "ARTICULO") {
+            return {
+              ItemCode: String(r.ItemCode || "").trim(),
+              Quantity: qty,
+              UnitPrice: price,
+              DiscountPercent: disc,
+              TaxCode: price === 0 ? "IVA_0" : (r.TaxCode || "IVA_15"),
+
+              CostingCode: String(r.CostingCode || ""),
+              CostingCode2: String(r.CostingCode2 || ""),
+              CostingCode3: String(r.CostingCode3 || ""),
+
+              ConceptoGasto: String(r.ConceptoGasto || ""),
+              IdSustentoTributario: String(r.IdSustentoTributario || ""),
+            };
+          }
+
+          return {
+            AccountCode: String(r.Cuenta || "").trim(),
+            ItemDescription: String(r.Descripcion || "SERVICIO").trim(),
+            Quantity: qty,
+            UnitPrice: price,
+            DiscountPercent: disc,
+            TaxCode: price === 0 ? "IVA_0" : (r.TaxCode || "IVA_15"),
+
+            CostingCode: String(r.CostingCode || ""),
+            CostingCode2: String(r.CostingCode2 || ""),
+            CostingCode3: String(r.CostingCode3 || ""),
+
+            ConceptoGasto: String(r.ConceptoGasto || ""),
+            IdSustentoTributario: String(r.IdSustentoTributario || ""),
+          };
+        }),
       };
       const res = await fetch(`${base}/api/oc/${data?.OcId || 0}/prefactura/servicio`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
@@ -415,7 +467,7 @@ export default function FacturaPreviewModal({
           const qty = Math.max(1, Number(r.Cantidad ?? 1) || 1);
 
           const baseLn = {
-            Descripcion: String(r.Descripcion || "SERVICIO"),
+            Descripcion: String(r.Descripcion || ""),
             Quantity: qty,
             Cantidad: qty,
 
@@ -432,10 +484,13 @@ export default function FacturaPreviewModal({
             CostingCode3: String(r.CostingCode3 || ""),
 
             IdSustentoTributario: String(r.IdSustentoTributario || ""),
-            ConceptoGasto: String(r.ConceptoGasto || ""),
           };
 
-          // ✅ ARTICULO -> manda ItemCode (y NO cuenta)
+          // ✅ SOLO SERVICIO manda ConceptoGasto
+          if (clase === "SERVICIO") {
+            baseLn.ConceptoGasto = String(r.ConceptoGasto || "");
+          }
+
           if (clase === "ARTICULO") {
             return {
               ...baseLn,
@@ -444,7 +499,6 @@ export default function FacturaPreviewModal({
             };
           }
 
-          // ✅ SERVICIO -> manda Cuenta (y NO itemcode)
           return {
             ...baseLn,
             Cuenta: String(r.Cuenta || "").trim(),
@@ -465,6 +519,14 @@ export default function FacturaPreviewModal({
       const j = await res.json();
       if (!res.ok) throw new Error(j?.error || "No se pudo actualizar el borrador en SAP");
 
+      // ✅ AQUI ES EL CAMBIO CLAVE
+      if (modo === "facturas_sap") {
+        setMsg({ type: "ok", text: "Gasto guardado. Este borrador queda en solo lectura." });
+        setFinalizado(true);                 // 🔒 bloquea todo ya
+        onUse?.({ locked: true, docEntry }); // ✅ para que en la lista salga "Ver"
+        return;
+      }
+
       setMsg({ type: "ok", text: "Borrador actualizado en SAP." });
       onUse?.({ clase, draftUpdated: true, docEntry });
     } catch (e) {
@@ -475,7 +537,6 @@ export default function FacturaPreviewModal({
   }
 
   /* ===== RENDER ===== */
-  // ✅ AQUÍ va el return null (DESPUÉS de todos los hooks)
   if (!open || !data) return null;
 
   return (
@@ -495,7 +556,7 @@ export default function FacturaPreviewModal({
                 value={clase}
                 onChange={(e)=>setClase(e.target.value)}
                 className={styles.select}
-                disabled={!!data?.TipoOC || isLock}
+                disabled={!!data?.TipoOC || isLock || readOnlyTotal}
               >
                 <option value="ARTICULO">ARTÍCULO</option>
                 <option value="SERVICIO">SERVICIO</option>
@@ -503,11 +564,12 @@ export default function FacturaPreviewModal({
             </label>
 
             <div className={styles.helperNote}>
-              {isLock
-                ? 'Rol Data: solo puedes seleccionar el Gasto.'
-                : (clase === 'ARTICULO'
-                    ? 'Notifica por correo para crear el ítem en SAP.'
-                    : 'Completa las líneas y crea la factura en SAP.')
+              {readOnlyTotal
+                ? '✅ Gasto ya registrado: este borrador está en solo lectura.'
+                : (isLock ? 'Rol Data: solo puedes seleccionar el Gasto.' :
+                    (clase === 'ARTICULO'
+                      ? 'Notifica por correo para crear el ítem en SAP.'
+                      : 'Completa las líneas y crea la factura en SAP.'))
               }
             </div>
           </div>
@@ -532,7 +594,7 @@ export default function FacturaPreviewModal({
                 type="date"
                 value={cabecera.DocDate}
                 onChange={e=>setCab('DocDate',e.target.value)}
-                disabled={isLock}
+                disabled={isLock || readOnlyTotal}
               />
             </label>
             <label className={styles.field}>
@@ -541,7 +603,7 @@ export default function FacturaPreviewModal({
                 type="date"
                 value={cabecera.DocDueDate}
                 onChange={e=>setCab('DocDueDate',e.target.value)}
-                disabled={isLock}
+                disabled={isLock || readOnlyTotal}
               />
             </label>
 
@@ -559,7 +621,7 @@ export default function FacturaPreviewModal({
               <input
                 value={cabecera.Secuencial}
                 onChange={e=>setCab('Secuencial',e.target.value)}
-                disabled={isLock}
+                disabled={isLock || readOnlyTotal}
               />
             </label>
             <label className={styles.field}>
@@ -567,7 +629,7 @@ export default function FacturaPreviewModal({
               <input
                 value={cabecera.NumAtCard}
                 onChange={e=>setCab('NumAtCard',e.target.value)}
-                disabled={isLock}
+                disabled={isLock || readOnlyTotal}
               />
             </label>
 
@@ -577,7 +639,7 @@ export default function FacturaPreviewModal({
                 value={cabecera.NroAutorizacion}
                 onChange={e=>setCab('NroAutorizacion',e.target.value)}
                 placeholder="10092025011790..."
-                disabled={isLock}
+                disabled={isLock || readOnlyTotal}
               />
             </label>
             <label className={styles.field}>
@@ -586,7 +648,7 @@ export default function FacturaPreviewModal({
                 type="date"
                 value={cabecera.FechaAutorizacion}
                 onChange={e=>setCab('FechaAutorizacion',e.target.value)}
-                disabled={isLock}
+                disabled={isLock || readOnlyTotal}
               />
             </label>
 
@@ -595,7 +657,7 @@ export default function FacturaPreviewModal({
               <select
                 value={cabecera.TipoEmision}
                 onChange={e=>setCab('TipoEmision',e.target.value)}
-                disabled={isLock}
+                disabled={isLock || readOnlyTotal}
               >
                 <option value="E">E - Electrónica</option>
                 <option value="F">F - Física</option>
@@ -608,7 +670,7 @@ export default function FacturaPreviewModal({
                 rows={3}
                 value={cabecera.Comments}
                 onChange={e=>setCab('Comments',e.target.value)}
-                disabled={isLock}
+                disabled={isLock || readOnlyTotal}
               />
             </label>
           </div>
@@ -641,7 +703,7 @@ export default function FacturaPreviewModal({
                 <div>Región</div>
                 <div>Departamento</div>
                 <div>Sustento</div>
-                <div>Gasto</div>
+                {clase === "SERVICIO" && <div>Gasto</div>}
                 <div className={styles.right}>Total</div>
                 <div></div>
               </div>
@@ -658,17 +720,21 @@ export default function FacturaPreviewModal({
                     {clase === 'ARTICULO' ? (
                       <>
                         <div>
-                          {/* ✅ CÓDIGO ARTÍCULO (ARREGLADO ln/i) */}
                           <input
                             value={ln.ItemCode || ""}
                             onChange={(e) => updateRow(i, { ItemCode: e.target.value })}
-                            disabled={isLock}
+                            disabled={isLock || readOnlyTotal}
                             placeholder="AR-7200"
                           />
                         </div>
 
                         <div>
-                          <input value={ln.Descripcion} readOnly />
+                          <input
+                            value={ln.Descripcion || ""}
+                            onChange={(e) => updateRow(i, { Descripcion: e.target.value })}
+                            disabled={isLock || readOnlyTotal}
+                            placeholder="Descripción del artículo"
+                          />
                         </div>
                       </>
                     ) : (
@@ -678,7 +744,7 @@ export default function FacturaPreviewModal({
                             value={ln.Cuenta}
                             onChange={e => updateRow(i, { Cuenta: e.target.value })}
                             placeholder="61103001"
-                            disabled={isLock}
+                            disabled={isLock || readOnlyTotal}
                           />
                         </div>
 
@@ -687,7 +753,7 @@ export default function FacturaPreviewModal({
                             value={ln.Descripcion}
                             onChange={e => updateRow(i, { Descripcion: e.target.value })}
                             placeholder="Detalle del servicio"
-                            disabled={isLock}
+                            disabled={isLock || readOnlyTotal}
                           />
                         </div>
                       </>
@@ -703,7 +769,7 @@ export default function FacturaPreviewModal({
                           const v = Number(e.target.value);
                           updateRow(i, { Cantidad: Number.isFinite(v) ? Math.max(1, v) : 1 });
                         }}
-                        disabled={isLock}
+                        disabled={isLock || readOnlyTotal}
                       />
                     </div>
 
@@ -714,7 +780,7 @@ export default function FacturaPreviewModal({
                         className={styles.numInp}
                         value={ln.Precio}
                         onChange={e => updateRow(i, { Precio: e.target.value })}
-                        disabled={isLock}
+                        disabled={isLock || readOnlyTotal}
                       />
                     </div>
 
@@ -725,7 +791,7 @@ export default function FacturaPreviewModal({
                         className={styles.numInp}
                         value={ln.Descuento}
                         onChange={e => updateRow(i, { Descuento: e.target.value })}
-                        disabled={isLock}
+                        disabled={isLock || readOnlyTotal}
                       />
                     </div>
 
@@ -734,7 +800,7 @@ export default function FacturaPreviewModal({
                       <select
                         value={ln.TaxCode}
                         onChange={e => updateRow(i, { TaxCode: e.target.value })}
-                        disabled={isLock}
+                        disabled={isLock || readOnlyTotal}
                       >
                         {IVA_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
@@ -745,7 +811,7 @@ export default function FacturaPreviewModal({
                       <select
                         value={ln.CostingCode}
                         onChange={e => updateRow(i, { CostingCode: e.target.value })}
-                        disabled={isLock}
+                        disabled={isLock || readOnlyTotal}
                       >
                         <option value="">Seleccione línea</option>
                         {dLinea.map(o => <option key={o.code} value={o.code}>{o.code} — {o.name}</option>)}
@@ -757,7 +823,7 @@ export default function FacturaPreviewModal({
                       <select
                         value={ln.CostingCode2}
                         onChange={e => updateRow(i, { CostingCode2: e.target.value })}
-                        disabled={isLock}
+                        disabled={isLock || readOnlyTotal}
                       >
                         <option value="">Seleccione región</option>
                         {dRegion.map(o => <option key={o.code} value={o.code}>{o.code} — {o.name}</option>)}
@@ -769,7 +835,7 @@ export default function FacturaPreviewModal({
                       <select
                         value={ln.CostingCode3}
                         onChange={e => updateRow(i, { CostingCode3: e.target.value })}
-                        disabled={isLock}
+                        disabled={isLock || readOnlyTotal}
                       >
                         <option value="">Seleccione departamento</option>
                         {dDepto.map(o => <option key={o.code} value={o.code}>{o.code} — {o.name}</option>)}
@@ -781,27 +847,39 @@ export default function FacturaPreviewModal({
                       <select
                         value={ln.IdSustentoTributario}
                         onChange={e => updateRow(i, { IdSustentoTributario: e.target.value })}
-                        disabled={isLock}
+                        disabled={isLock || readOnlyTotal}
                       >
                         {SUSTENTO_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
                     </div>
 
-                    {/* ✅ GASTO (EL ÚNICO EDITABLE CUANDO isLock) */}
-                    <div>
-                      <select
-                        value={ln.ConceptoGasto}
-                        onChange={e => handleSelectGasto(i, e.target.value)}
-                        disabled={!gastos.length}
-                      >
-                        <option value="">{gastos.length ? 'Seleccione concepto de gasto' : 'Cargando...'}</option>
-                        {gastos.map(g => {
-                          const code = g.gasto ?? g.Name;
-                          const label = g.concepto ?? g.U_SYP_CONCEPTO;
-                          return <option key={g.code ?? g.Code ?? code} value={code}>{code} — {label}</option>;
-                        })}
-                      </select>
-                    </div>
+                    {/* ✅ GASTO */}
+                    {clase === "SERVICIO" && (
+                      <div>
+                        <select
+                          value={ln.ConceptoGasto}
+                          onChange={(e) => handleSelectGasto(i, e.target.value)}
+                          disabled={
+                            !gastos.length ||
+                            readOnlyTotal ||
+                            (!isLock && !canEditGasto)
+                          }
+                        >
+                          <option value="">
+                            {gastos.length ? "Seleccione concepto de gasto" : "Cargando..."}
+                          </option>
+                          {gastos.map((g) => {
+                            const code = g.gasto ?? g.Name;
+                            const label = g.concepto ?? g.U_SYP_CONCEPTO;
+                            return (
+                              <option key={g.code ?? g.Code ?? code} value={code}>
+                                {code} — {label}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+                    )}
 
                     <div className={styles.num}>{total.toFixed(2)}</div>
 
@@ -811,7 +889,7 @@ export default function FacturaPreviewModal({
                         className={styles.iconBtn}
                         onClick={() => removeRow(i)}
                         aria-label={`Eliminar línea ${i + 1}`}
-                        disabled={isLock}
+                        disabled={isLock || readOnlyTotal}
                       >
                         ×
                       </button>
@@ -827,7 +905,7 @@ export default function FacturaPreviewModal({
                       type="button"
                       className={styles.secondary}
                       onClick={addRow}
-                      disabled={isLock}
+                      disabled={isLock || readOnlyTotal}
                     >
                       + Agregar línea de servicio
                     </button>
@@ -866,18 +944,24 @@ export default function FacturaPreviewModal({
           <div className={styles.actions}>
             <button className={styles.secondary} onClick={onClose} disabled={sending}>Cerrar</button>
 
-            {clase === 'ARTICULO' ? (
-              <button className={styles.primaryOutline} onClick={enviarCorreoArticulo} disabled={sending || isLock}>
+            {clase === 'ARTICULO' && (
+              <button
+                className={styles.primaryOutline}
+                onClick={enviarCorreoArticulo}
+                disabled={sending || isLock || readOnlyTotal}
+              >
                 {sending ? 'Enviando…' : 'Notificar creación de ítem'}
-              </button>
-            ) : (
-              <button className={styles.primaryOutline} onClick={crearFacturaServicio} disabled={sending}>
-                {sending ? 'Creando…' : 'Crear factura (SERVICIO)'}
               </button>
             )}
 
-            <button className={styles.primary} onClick={guardarBorrador} disabled={sending}>
-              {sending ? 'Guardando…' : 'Guardar borrador'}
+            {/* ✅ Guardar borrador: si ya guardó gasto => NO se permite */}
+            <button
+              className={styles.primary}
+              onClick={guardarBorrador}
+              disabled={sending || readOnlyTotal}
+              title={readOnlyTotal ? "Este borrador ya tiene gasto guardado" : ""}
+            >
+              {sending ? 'Guardando…' : (readOnlyTotal ? 'Solo lectura' : 'Guardar borrador')}
             </button>
           </div>
         </div>

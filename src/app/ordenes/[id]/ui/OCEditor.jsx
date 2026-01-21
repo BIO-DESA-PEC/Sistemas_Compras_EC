@@ -12,6 +12,7 @@ import {
   previewPrefacturaOC,
   updatePagoOC,
 } from "@/app/lib/backend";
+import { useSession } from "next-auth/react";
 
 import styles from "../orden.module.css";
 import ProveedorPicker from "@/components/SupplierSelect";
@@ -116,6 +117,28 @@ export default function OCEditor({ oc, detalleInicial }) {
     aprobadorId: null,
     aprobadorNombre: "",
   });
+const { data: session } = useSession();
+const [user, setUser] = useState(null);
+
+useEffect(() => {
+  let alive = true;
+
+  (async () => {
+    try {
+      const email = session?.user?.email;
+      if (!email) return;
+
+      const u = await getUserByEmail(email);
+      if (!alive) return;
+
+      setUser(u);
+    } catch (e) {
+      console.error("No pude cargar usuario por email", e);
+    }
+  })();
+
+  return () => { alive = false; };
+}, [session?.user?.email]);
 
   // Derivados útiles para UI/locks
   const enAprobacion = ocAprob?.existe && ocAprob.estado === "PENDIENTE";
@@ -876,22 +899,23 @@ export default function OCEditor({ oc, detalleInicial }) {
       )}
 
       {/* Modal de PREVIEW (archivo aparte) */}
-            <FacturaPreviewModal
-        open={previewOpen}
-        data={
-          previewData
-            ? {
-                ...previewData,
-                OcId: ocId,     // aquí ya existe la variable
-              }
-            : null             // cuando no hay preview, no mandamos datos
-        }
-        onClose={() => {
-          setPreviewOpen(false);
-          setPreviewData(null);
-        }}
-        onUse={handleUseDraft}
-      />
+           <FacturaPreviewModal
+  open={previewOpen}
+  data={previewData ? { ...previewData, OcId: ocId } : null}
+  onClose={() => {
+    setPreviewOpen(false);
+    setPreviewData(null);
+  }}
+  onUse={handleUseDraft}
+
+  // ✅ ESTO ES EL PASO 5
+  rolNombre={user?.RolNombre}
+  rolId={user?.RolId}
+
+  // opcional: etiqueta del origen
+  modo="ordenes"
+/>
+
 
     </div>
   );

@@ -1,5 +1,5 @@
 import NextAuth from "next-auth";
-import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
+import MicrosoftEntraID from "@auth/core/providers/microsoft-entra-id";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   // 🔐 Proveedor Microsoft Entra ID

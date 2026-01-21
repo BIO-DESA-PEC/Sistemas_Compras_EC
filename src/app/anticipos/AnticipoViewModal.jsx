@@ -12,10 +12,13 @@ export default function AnticipoViewModal({ anticipo, onClose }) {
     fechaPago,
     estadoAnticipo,
     valor,
+    montoPagado, 
+    saldo,      
     adjuntoUrl,
+    IdSolicitud,
   } = anticipo;
 
-  const fecha = fechaPago ? fechaPago.substring(0, 10) : "";
+  const fecha = fechaPago ? String(fechaPago).substring(0, 10) : "";
 
   function handleOpen() {
     if (!adjuntoUrl) return;
@@ -30,32 +33,48 @@ export default function AnticipoViewModal({ anticipo, onClose }) {
         <div className={styles.detailGrid}>
           <div>
             <div className={styles.detailLabel}># Anticipo</div>
-            <div className={styles.detailValue}>{numeroAnticipo}</div>
+            <div className={styles.detailValue}>{numeroAnticipo || "—"}</div>
+          </div>
+
+          <div>
+            <div className={styles.detailLabel}>Id Solicitud</div>
+            <div className={styles.detailValue}>{IdSolicitud || "—"}</div>
           </div>
 
           <div>
             <div className={styles.detailLabel}>Identificación</div>
-            <div className={styles.detailValue}>{identificacion}</div>
+            <div className={styles.detailValue}>{identificacion || "—"}</div>
           </div>
 
           <div>
             <div className={styles.detailLabel}>Detalle gasto</div>
-            <div className={styles.detailValue}>{detalleGasto}</div>
+            <div className={styles.detailValue}>{detalleGasto || "—"}</div>
           </div>
 
           <div>
             <div className={styles.detailLabel}>Fecha pago</div>
-            <div className={styles.detailValue}>{fecha}</div>
+            <div className={styles.detailValue}>{fecha || "—"}</div>
           </div>
 
           <div>
             <div className={styles.detailLabel}>Estado</div>
-            <div className={styles.detailValue}>{estadoAnticipo}</div>
+            <div className={styles.detailValue}>{estadoAnticipo || "—"}</div>
           </div>
 
           <div>
             <div className={styles.detailLabel}>Valor</div>
-            <div className={styles.detailValue}>{valor}</div>
+            <div className={styles.detailValue}>{valor ?? "—"}</div>
+          </div>
+
+          {/* ✅ NUEVO: pago parcial */}
+          <div>
+            <div className={styles.detailLabel}>Monto pagado</div>
+            <div className={styles.detailValue}>{montoPagado ?? "—"}</div>
+          </div>
+
+          <div>
+            <div className={styles.detailLabel}>Saldo</div>
+            <div className={styles.detailValue}>{saldo ?? "—"}</div>
           </div>
         </div>
 
@@ -69,23 +88,19 @@ export default function AnticipoViewModal({ anticipo, onClose }) {
               >
                 Ver adjunto
               </button>
-              <a
-  className={styles.btnSecondary}
-  href={adjuntoUrl}
-  target="_blank"
-  rel="noopener noreferrer"
->
-  Descargar
-</a>
 
+              <a
+                className={styles.btnSecondary}
+                href={adjuntoUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Descargar
+              </a>
             </>
           )}
 
-          <button
-            type="button"
-            className={styles.btnPrimary}
-            onClick={onClose}
-          >
+          <button type="button" className={styles.btnPrimary} onClick={onClose}>
             Cerrar
           </button>
         </div>

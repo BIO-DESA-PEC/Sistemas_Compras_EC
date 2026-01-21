@@ -15,25 +15,33 @@ import {
 import styles from "./sidebar.module.css";
 
 export default function Sidebar({ session, user, collapsed }) {
-  const isData = user?.RolId === 5 || user?.RolNombre === "Data";
+  const rolNombre = (user?.RolNombre || "").trim().toUpperCase();
+  const rolId = Number(user?.RolId);
 
-  const isAdmin = user?.RolId === 1 || user?.RolNombre === "Administrador";
+  // ✅ Roles
+  const isAdmin = rolId === 1 || rolNombre === "ADMINISTRADOR";
+  const isUsuario = rolId === 3 || rolNombre === "USUARIO";
+  const isCompras = rolId === 6 || rolNombre === "COMPRAS";
+  const isData = rolId === 5 || rolNombre === "DATA";
+  const isContabilidad = rolId === 4 || rolNombre === "CONTABILIDAD";
 
-  const canSeeAprobaciones =
-    isAdmin || user?.RolId === 2 || user?.RolNombre === "Jefe TI";
+  // ✅ FACTURAS SAP: SOLO Admin + Data
+  const canSeeFacturasSap = isAdmin || isData;
 
-  // ✅ Facturas SAP: Admin + Contabilidad + RolId 4 + Data (RolId 5)
-  const canSeeFacturasSap =
-    isAdmin ||
-    user?.RolNombre === "Contabilidad" ||
-    user?.RolId === 4 ||
-    isData;
+  // ✅ ADMIN GENERAL: SOLO Admin
+  const canSeeAdmin = isAdmin;
 
-  const canSeeAnticipos =
-    isAdmin || user?.RolId === 6 || user?.RolNombre === "Compras";
+  // ✅ Aprobaciones: Admin + Jefe TI (si mantienes eso)
+  const canSeeAprobaciones = isAdmin || rolId === 2 || rolNombre === "JEFE TI";
 
-  // Si es Data, que el "home" lo mande a Facturas SAP
-  const dashboardHref = isData ? "/facturas-sap" : "/dashboard";
+  // ✅ Anticipos: Admin + Compras
+  const canSeeAnticipos = isAdmin || isCompras;
+
+  const dashboardHref = isData
+    ? "/facturas-sap"
+    : isContabilidad
+    ? "/ordenes"
+    : "/dashboard";
 
   return (
     <aside
@@ -50,18 +58,46 @@ export default function Sidebar({ session, user, collapsed }) {
       </div>
 
       <nav className={styles.nav}>
-        {/* ✅ SI ES DATA: SOLO FACTURAS SAP */}
+        {/* ✅ DATA: SOLO FACTURAS SAP */}
         {isData ? (
           <>
             <div className={styles.sectionLabel}>Finanzas</div>
-            {canSeeFacturasSap && (
-              <a href="/facturas-sap" className={styles.item}>
-                <FileText size={18} />
-                <span>Facturas SAP</span>
-              </a>
-            )}
+            <a href="/facturas-sap" className={styles.item}>
+              <FileText size={18} />
+              <span>Facturas SAP</span>
+            </a>
+          </>
+        ) : isContabilidad ? (
+          /* ✅ CONTABILIDAD: SOLO ÓRDENES DE COMPRA */
+          <>
+            <div className={styles.sectionLabel}>Compras</div>
+            <a href="/ordenes" className={styles.item}>
+              <FileText size={18} />
+              <span>Órdenes de compra</span>
+            </a>
+          </>
+        ) : isUsuario ? (
+          /* ✅ USUARIO (RolId 3): SOLO Dashboard + Nueva solicitud + Solicitudes */
+          <>
+            <div className={styles.sectionLabel}>General</div>
+            <a href="/dashboard" className={styles.item}>
+              <LayoutDashboard size={18} />
+              <span>Dashboard</span>
+            </a>
+
+            <div className={styles.sectionLabel}>Compras</div>
+            <a href="/solicitudes/new" className={styles.item}>
+              <ShoppingCart size={18} />
+              <span>Nueva solicitud</span>
+            </a>
+
+            <a href="/solicitudes" className={styles.item}>
+              <ListChecks size={18} />
+              <span>Solicitudes</span>
+            </a>
           </>
         ) : (
+          /* ✅ RESTO (Admin, Compras, Jefe TI, etc.) */
           <>
             <div className={styles.sectionLabel}>General</div>
 
@@ -111,10 +147,7 @@ export default function Sidebar({ session, user, collapsed }) {
                 </a>
 
                 <div className={styles.submenu}>
-                  <a
-                    href="/aprobaciones/solicitudes"
-                    className={styles.subitem}
-                  >
+                  <a href="/aprobaciones/solicitudes" className={styles.subitem}>
                     Solicitudes
                   </a>
                 </div>
@@ -131,7 +164,7 @@ export default function Sidebar({ session, user, collapsed }) {
               </>
             )}
 
-            {isAdmin && (
+            {canSeeAdmin && (
               <>
                 <div className={styles.sectionLabel}>Administración</div>
 
@@ -157,7 +190,7 @@ export default function Sidebar({ session, user, collapsed }) {
         )}
       </nav>
 
-      {/* 👤 Usuario + icono logout */}
+      {/* 👤 Usuario + logout */}
       <div className={styles.bottomUser}>
         <div className={styles.userInfo}>
           <div className={styles.userName}>{session?.user?.name ?? ""}</div>

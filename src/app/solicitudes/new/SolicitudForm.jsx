@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import styles from "./new.module.css";
 import { Plus, Trash2, Check, AlertCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -33,6 +33,20 @@ export default function SolicitudForm({
   const [sending, setSending] = useState(false);
   const [okId, setOkId] = useState(initial?.cabecera?.IdSolicitud ?? null);
   const [errorMsg, setErrorMsg] = useState("");
+
+  // ✅ ===== ROLES (según tu endpoint by-email) =====
+  // user.RolNombre viene como: "Administrador", "Compras", "Usuario", "Contabilidad", etc.
+  const rolNombre = useMemo(() => {
+    const r = (user?.RolNombre || "").trim();
+    return r;
+  }, [user]);
+
+  // ✅ Solo estos roles pueden auto-aprobar y crear OC
+  const puedeCrearOC = useMemo(() => {
+    const r = rolNombre.toUpperCase();
+    return r === "ADMINISTRADOR" || r === "COMPRAS";
+  }, [rolNombre]);
+  // ✅ ============================================
 
   // Precarga cuando viene "initial"
   useEffect(() => {
@@ -109,6 +123,12 @@ export default function SolicitudForm({
     const v = validate();
     if (v) { setErrorMsg(v); return; }
 
+    // ✅ Seguridad UI: si NO puede crear OC, bloqueamos action="auto"
+    if (action === "auto" && !puedeCrearOC) {
+      setErrorMsg("No autorizado: tu rol no puede aprobar y crear OC.");
+      return;
+    }
+
     setSending(true);
     try {
       const detalle = rows.map(r => {
@@ -178,7 +198,8 @@ export default function SolicitudForm({
 
   // Datos de meta (cabecera visual)
   const metaId     = okId ?? initial?.cabecera?.IdSolicitud ?? null;
-  const metaCodigo = initial?.cabecera?.Codigo ?? null;  const metaEstado = isCreate ? "PENDIENTE" : (initial?.cabecera?.Estado ?? "—");
+  const metaCodigo = initial?.cabecera?.Codigo ?? null;
+  const metaEstado = isCreate ? "PENDIENTE" : (initial?.cabecera?.Estado ?? "—");
   const metaFecha  = isCreate
     ? new Date().toISOString().slice(0, 10)
     : (initial?.cabecera?.FechaCreacionSoli ?? "—");
@@ -193,6 +214,8 @@ export default function SolicitudForm({
           </h1>
           <div className={styles.sub}>
             Solicitante: <b>{user.Nombre}</b> — Depto: <b>{metaDepto}</b>
+            {/* opcional para debug */}
+            {/* <span style={{ marginLeft: 10, opacity: 0.7 }}>Rol: {rolNombre || "—"}</span> */}
           </div>
         </div>
       </div>
@@ -223,9 +246,9 @@ export default function SolicitudForm({
       {/* Cabecera visual */}
       <div className={styles.meta}>
         <div>
-      <span>Código</span>
-      <b>{metaCodigo || (metaId ? `#${metaId}` : "—")}</b> {/* 🔄 usa Codigo si viene */}
-    </div>
+          <span>Código</span>
+          <b>{metaCodigo || (metaId ? `#${metaId}` : "—")}</b>
+        </div>
         <div><span>Solicitante</span><b>{user.Nombre}</b></div>
         <div><span>Departamento</span><b>{metaDepto}</b></div>
         <div><span>Estado</span><b>{metaEstado}</b></div>
@@ -328,41 +351,46 @@ export default function SolicitudForm({
           </div>
         )}
 
-        {/* Acciones */}
+        {/* ✅ Acciones (según rol) */}
         <div className={styles.actions}>
-          {!isView && (
-            <>
-              {/* Enviar para aprobación (correo) */}
-              <button
-                type="button"
-                className={styles.primary}
-                disabled={sending}
-                onClick={(e) => submit(e, "approval")}
-                title="Enviar para aprobación (manda correo al aprobador)"
-              >
-                {sending ? "Enviando..." : "Enviar para aprobación"}
-              </button>
+  {!isView && (
+    <>
+      {/* ✅ SIEMPRE: Enviar para aprobación */}
+      <button
+        type="button"
+        className={styles.primary}
+        disabled={sending}
+        onClick={(e) => submit(e, "approval")}
+        title="Enviar para aprobación (manda correo al aprobador)"
+      >
+        {sending ? "Enviando..." : "Enviar para aprobación"}
+      </button>
 
-              {/* Enviar (auto-aprobar y crear OC) */}
-              <button
-                type="button"
-                className={styles.secondary}
-                disabled={sending}
-                onClick={(e) => submit(e, "auto")}
-                title="Aprueba automáticamente y crea la OC"
-              >
-                {sending ? "Procesando..." : "Enviar (aprobar y crear OC)"}
-              </button>
-            </>
-          )}
-          <button
-            type="button"
-            className={styles.ghost}
-            onClick={() => router.push("/solicitudes")}
-          >
-            {isView ? "Volver al listado" : "Cancelar"}
-          </button>
-        </div>
+      {/* ✅ SOLO ADMINISTRADOR / COMPRAS: botón extra para crear OC */}
+      {puedeCrearOC && (
+        <button
+          type="button"
+          className={styles.secondary}
+          disabled={sending}
+          onClick={(e) => submit(e, "auto")}
+          title="Aprueba automáticamente y crea la OC"
+        >
+          {sending ? "Procesando..." : "Enviar (aprobar y crear OC)"}
+        </button>
+      )}
+    </>
+  )}
+
+  {/* ✅ Cancelar siempre */}
+  <button
+    type="button"
+    className={styles.ghost}
+    onClick={() => router.push("/solicitudes")}
+  >
+    {isView ? "Volver al listado" : "Cancelar"}
+  </button>
+</div>
+
       </form>
     </div>
   );

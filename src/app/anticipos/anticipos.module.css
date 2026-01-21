@@ -400,3 +400,37 @@
 .actionBtnOk:hover {
   background: #d9ffe9;
 }
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.badgePaid {
+  background: #dff7e6;
+  color: #0f7a2a;
+}
+
+.badgePartial {
+  background: #fff3cd;
+  color: #8a5a00;
+}
+
+.badgePending {
+  background: #fde2e1;
+  color: #a11a1a;
+}
+.estadoParcial {
+  background: #24217a;
+  color: #9fd6e5;
+}
+
+.checkRow{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin:10px 0 5px;
+}

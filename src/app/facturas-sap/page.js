@@ -3,9 +3,8 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import styles from './Facturas.module.css';
-import { getFacturasSap, getFacturaSapByDraft } from '@/app/lib/backend';
+import { getFacturasSap, getFacturaSapByDraft, getUserByEmail } from '@/app/lib/backend';
 import { useSession } from "next-auth/react";
-import { getUserByEmail } from "@/app/lib/backend";
 
 // Cargamos el modal solo en cliente
 const FacturaPreviewModal = dynamic(
@@ -13,7 +12,7 @@ const FacturaPreviewModal = dynamic(
   { ssr: false }
 );
 
-const PAGE_SIZE = 20; // número de filas por página
+const PAGE_SIZE = 20;
 
 export default function FacturasSAPPage() {
   const [facturas, setFacturas] = useState([]);
@@ -31,14 +30,40 @@ export default function FacturasSAPPage() {
   // Paginado
   const [page, setPage] = useState(1);
 
-  // --------- cargar lista de borradores ----------
+  const { data: session } = useSession();
+  const [lockSoloGasto, setLockSoloGasto] = useState(false);
+
+  // ✅ Cache: DraftDocEntry -> true/false si ya tiene gasto
+  const [gastoByDraft, setGastoByDraft] = useState({}); // { [DraftDocEntry]: boolean }
+
+  // --------- cargar rol (Data) ----------
+  useEffect(() => {
+    async function loadRole() {
+      try {
+        const email = session?.user?.email;
+        if (!email) return;
+
+        const u = await getUserByEmail(email);
+        const rol = (u?.RolNombre || "").toString().toLowerCase();
+        setLockSoloGasto(rol === "data");
+      } catch (e) {
+        console.error("getUserByEmail role:", e);
+        setLockSoloGasto(false);
+      }
+    }
+    loadRole();
+  }, [session?.user?.email]);
+
+  // --------- cargar lista ----------
   const loadFacturas = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
       const data = await getFacturasSap();
       setFacturas(data || []);
-      setPage(1); // reset página al recargar
+      setPage(1);
+      // opcional: limpiar cache si quieres recalcular todo
+      // setGastoByDraft({});
     } catch (err) {
       console.error(err);
       setError(err?.message || 'No se pudieron cargar las facturas.');
@@ -73,7 +98,7 @@ export default function FacturasSAPPage() {
     });
   }, [facturas, search]);
 
-  // --------- paginado (en memoria) ----------
+  // --------- paginado ----------
   const totalRows = filteredFacturas.length;
   const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
 
@@ -87,8 +112,53 @@ export default function FacturasSAPPage() {
     setPage(p);
   };
 
-  // --------- al hacer clic en "Editar" ----------
-  const handleEditar = async (row) => {
+  // ✅ Detecta si un draft YA tiene gasto leyendo el Draft (real)
+  const checkDraftHasGasto = useCallback(async (draftDocEntry) => {
+    try {
+      const draft = await getFacturaSapByDraft(draftDocEntry);
+      const lineas = draft?.Lineas || [];
+      // busca ConceptoGasto en cualquiera
+      const has = lineas.some(ln => String(ln?.ConceptoGasto || "").trim().length > 0);
+      return has;
+    } catch (e) {
+      console.error("checkDraftHasGasto error:", e);
+      return false;
+    }
+  }, []);
+
+  // ✅ Prefetch (solo para la página actual) y cachear
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      const toCheck = paginatedFacturas
+        .map(r => Number(r?.DraftDocEntry))
+        .filter(n => Number.isFinite(n) && gastoByDraft[n] === undefined);
+
+      if (!toCheck.length) return;
+
+      // OJO: esto hace llamadas al back por cada draft en la página (máx 20)
+      const results = await Promise.all(
+        toCheck.map(async (docEntry) => {
+          const has = await checkDraftHasGasto(docEntry);
+          return [docEntry, has];
+        })
+      );
+
+      if (!alive) return;
+
+      setGastoByDraft(prev => {
+        const next = { ...prev };
+        for (const [docEntry, has] of results) next[docEntry] = has;
+        return next;
+      });
+    })();
+
+    return () => { alive = false; };
+  }, [paginatedFacturas, gastoByDraft, checkDraftHasGasto]);
+
+  // --------- abrir modal ----------
+  const handleOpenDraft = async (row) => {
     try {
       setLoadingDraft(true);
       setError('');
@@ -104,49 +174,21 @@ export default function FacturasSAPPage() {
       setPreviewOpen(true);
     } catch (err) {
       console.error(err);
-      alert(
-        'No se pudo cargar el borrador de SAP: ' +
-          (err?.message || String(err))
-      );
+      alert('No se pudo cargar el borrador de SAP: ' + (err?.message || String(err)));
     } finally {
       setLoadingDraft(false);
     }
   };
 
-  // Cuando el modal termina algo (guardar borrador / crear factura), recargamos la lista
   const handleUseDraft = () => {
     setPreviewOpen(false);
     setPreviewData(null);
-    loadFacturas();
+    loadFacturas(); // recarga lista
   };
-const { data: session } = useSession();
-const [lockSoloGasto, setLockSoloGasto] = useState(false);
-
-useEffect(() => {
-  async function loadRole() {
-    try {
-      const email = session?.user?.email;
-      if (!email) return;
-
-      const u = await getUserByEmail(email); // usa TU backend.js
-      const rol = (u?.RolNombre || "").toString().toLowerCase(); // viene del API :contentReference[oaicite:1]{index=1}
-      setLockSoloGasto(rol === "data");
-    } catch (e) {
-      console.error("getUserByEmail role:", e);
-      setLockSoloGasto(false);
-    }
-  }
-  loadRole();
-}, [session?.user?.email]);
 
   // --------- render ----------
-  if (loading) {
-    return <p className={styles.msg}>Cargando facturas...</p>;
-  }
-
-  if (error) {
-    return <p className={styles.error}>{error}</p>;
-  }
+  if (loading) return <p className={styles.msg}>Cargando facturas...</p>;
+  if (error) return <p className={styles.error}>{error}</p>;
 
   return (
     <main className={styles.container}>
@@ -164,11 +206,7 @@ useEffect(() => {
               setPage(1);
             }}
           />
-          <button
-            type="button"
-            className={styles.btnSecondary}
-            onClick={loadFacturas}
-          >
+          <button type="button" className={styles.btnSecondary} onClick={loadFacturas}>
             Actualizar
           </button>
         </div>
@@ -194,97 +232,90 @@ useEffect(() => {
                 <th>Acciones</th>
               </tr>
             </thead>
+
             <tbody>
-              {paginatedFacturas.map((f, i) => (
-                <tr key={`${f.IdOC}-${f.DraftDocEntry}-${i}`}>
-                  <td>{f.IdOC}</td>
-                  <td>{f.IdSolicitud}</td>
-                  <td>{f.DraftDocEntry}</td>
-                  <td>{f.Estado}</td>
-                  <td>{f.Proveedor || '—'}</td>
-                  <td>
-                    {Number(
-                      f.TotalSAP != null ? f.TotalSAP : f.DocTotal || 0
-                    ).toLocaleString('es-EC', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
-                  </td>
-                  <td>
-                    <button
-                      className={styles.btn}
-                      onClick={() => handleEditar(f)}
-                      disabled={loadingDraft}
-                    >
-                      {loadingDraft ? 'Cargando…' : 'Editar'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {paginatedFacturas.map((f, i) => {
+                const docEntry = Number(f?.DraftDocEntry);
+                const hasGasto = Number.isFinite(docEntry) ? !!gastoByDraft[docEntry] : false;
+
+                // ✅ si ya tiene gasto => botón "Ver"
+                const label = hasGasto ? "Ver" : "Editar";
+
+                return (
+                  <tr key={`${f.IdOC}-${f.DraftDocEntry}-${i}`}>
+                    <td>{f.IdOC}</td>
+                    <td>{f.IdSolicitud}</td>
+                    <td>{f.DraftDocEntry}</td>
+                    <td>{f.Estado}</td>
+                    <td>{f.Proveedor || '—'}</td>
+                    <td>
+                      {Number(f.TotalSAP != null ? f.TotalSAP : f.DocTotal || 0)
+                        .toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td>
+                      <button
+                        className={styles.btn}
+                        onClick={() => handleOpenDraft(f)}
+                        disabled={loadingDraft}
+                        title={hasGasto ? "Este borrador ya tiene gasto registrado" : "Editar borrador"}
+                      >
+                        {loadingDraft ? 'Cargando…' : label}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
 
-          {/* Paginación estilo pill */}
-<div className={styles.pagination}>
-  <div className={styles.pageButtons}>
-    {/* Flecha izquierda */}
-    <button
-      className={`${styles.pageBtn} ${styles.arrowBtn} ${
-        currentPage === 1 ? styles.pageBtnDisabled : ''
-      }`}
-      onClick={() => goToPage(currentPage - 1)}
-      disabled={currentPage === 1}
-    >
-      «
-    </button>
+          {/* Paginación */}
+          <div className={styles.pagination}>
+            <div className={styles.pageButtons}>
+              <button
+                className={`${styles.pageBtn} ${styles.arrowBtn} ${currentPage === 1 ? styles.pageBtnDisabled : ''}`}
+                onClick={() => goToPage(currentPage - 1)}
+                disabled={currentPage === 1}
+              >
+                «
+              </button>
 
-    {/* Números de página */}
-    {Array.from({ length: totalPages }, (_, idx) => {
-      const p = idx + 1;
-      return (
-        <button
-          key={p}
-          className={
-            p === currentPage
-              ? `${styles.pageBtn} ${styles.pageBtnActive}`
-              : styles.pageBtn
-          }
-          onClick={() => goToPage(p)}
-        >
-          {p}
-        </button>
-      );
-    })}
+              {Array.from({ length: totalPages }, (_, idx) => {
+                const p = idx + 1;
+                return (
+                  <button
+                    key={p}
+                    className={p === currentPage ? `${styles.pageBtn} ${styles.pageBtnActive}` : styles.pageBtn}
+                    onClick={() => goToPage(p)}
+                  >
+                    {p}
+                  </button>
+                );
+              })}
 
-    {/* Flecha derecha */}
-    <button
-      className={`${styles.pageBtn} ${styles.arrowBtn} ${
-        currentPage === totalPages ? styles.pageBtnDisabled : ''
-      }`}
-      onClick={() => goToPage(currentPage + 1)}
-      disabled={currentPage === totalPages}
-    >
-      »
-    </button>
-  </div>
-</div>
-
+              <button
+                className={`${styles.pageBtn} ${styles.arrowBtn} ${currentPage === totalPages ? styles.pageBtnDisabled : ''}`}
+                onClick={() => goToPage(currentPage + 1)}
+                disabled={currentPage === totalPages}
+              >
+                »
+              </button>
+            </div>
+          </div>
         </>
       )}
 
-      {/* Modal de edición del Draft OPCH */}
+      {/* Modal */}
       <FacturaPreviewModal
-  open={previewOpen}
-  data={previewData}
-  onClose={() => {
-    setPreviewOpen(false);
-    setPreviewData(null);
-  }}
-  onUse={handleUseDraft}
- modo="facturas_sap"
-  lockSoloGasto={lockSoloGasto}
-/>
-
+        open={previewOpen}
+        data={previewData}
+        onClose={() => {
+          setPreviewOpen(false);
+          setPreviewData(null);
+        }}
+        onUse={handleUseDraft}
+        modo="facturas_sap"
+        lockSoloGasto={lockSoloGasto}
+      />
     </main>
   );
 }
