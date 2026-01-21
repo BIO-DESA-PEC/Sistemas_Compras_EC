@@ -12,7 +12,7 @@ export default async function Page() {
       <div className={styles.brandInner}>
         <img className={styles.logo} src="/biocells-logo.png" alt="BIOCELLS" />
         <div className={styles.company}>BIOCELLS DISCOVERIES INTERNACIONAL S.A.</div>
-        <div className={styles.system}>SISTEMA DE COMPRAS</div>
+        <div className={styles.system}>SISTEMA DE COMPRAS EC</div>
       </div>
     </div>
   );
