@@ -121,15 +121,10 @@ export default function FacturaPreviewModal({
 
   // Se pone true cuando Data guarda el gasto en este modal
   const [finalizado, setFinalizado] = useState(false);
+  // ✅ Guarda si el borrador YA venía con gasto desde SAP (al abrir)
+  const [yaTeniaGastoAlAbrir, setYaTeniaGastoAlAbrir] = useState(false);
 
-  // Si el borrador ya venía con gasto (cuando reabres), también se bloquea
-  const yaTieneGasto = useMemo(() => {
-    if (modo !== "facturas_sap") return false;
-    return (rows || []).some(r => String(r.ConceptoGasto || "").trim() !== "");
-  }, [modo, rows]);
-
-  // Si está finalizado o ya tenía gasto => solo lectura total
-  const readOnlyTotal = (modo === "facturas_sap") && (finalizado || yaTieneGasto);
+  const readOnlyTotal = (modo === "facturas_sap") && (finalizado || yaTeniaGastoAlAbrir);
 
   // ✅ Data lock: mientras NO esté finalizado => solo gasto editable
   const isLock = (modo === 'facturas_sap') && !!lockSoloGasto && !readOnlyTotal;
@@ -222,29 +217,35 @@ export default function FacturaPreviewModal({
 
   // 5) Refrescar líneas cuando cambia DocEntry o sustento
   useEffect(() => {
-    if (!data) return;
+  if (!data) return;
 
-    setRows((data.Lineas || []).map((ln) => ({
-      ItemCode: ln.ItemCode || '',
-      Descripcion: ln.ItemDescription || '',
-      Cuenta: str(ln.AccountCode || ln.Cuenta || ''),
+  // ✅ Detecta si el borrador YA tenía gasto desde SAP (NO usa rows editables)
+  const teniaGasto = (data.Lineas || []).some(ln =>
+    String(ln.ConceptoGasto || "").trim() !== ""
+  );
+  setYaTeniaGastoAlAbrir(teniaGasto);
 
-      Cantidad: n2(ln.Quantity ?? 1),
-      Precio: n2(ln.UnitPrice ?? 0),
-      Descuento: n2(ln.DiscountPercent ?? 0),
-      TaxCode: ln.TaxCode || 'IVA_15',
+  setRows((data.Lineas || []).map((ln) => ({
+    ItemCode: ln.ItemCode || '',
+    Descripcion: ln.ItemDescription || '',
+    Cuenta: str(ln.AccountCode || ln.Cuenta || ''),
 
-      CostingCode: ln.CostingCode || '',
-      CostingCode2: ln.CostingCode2 || '',
-      CostingCode3: ln.CostingCode3 || '',
+    Cantidad: n2(ln.Quantity ?? 1),
+    Precio: n2(ln.UnitPrice ?? 0),
+    Descuento: n2(ln.DiscountPercent ?? 0),
+    TaxCode: ln.TaxCode || 'IVA_15',
 
-      IdSustentoTributario: (ln.U_SYP_CODIDTRD || cabecera.IdSustentoTributario),
-      ConceptoGasto: str(ln.ConceptoGasto || ''),
-    })));
+    CostingCode: ln.CostingCode || '',
+    CostingCode2: ln.CostingCode2 || '',
+    CostingCode3: ln.CostingCode3 || '',
 
-    // ✅ si abres otro docEntry, resetea finalizado
-    setFinalizado(false);
-  }, [data?.DocEntry, cabecera.IdSustentoTributario]);
+    IdSustentoTributario: (ln.U_SYP_CODIDTRD || cabecera.IdSustentoTributario),
+    ConceptoGasto: str(ln.ConceptoGasto || ''),
+  })));
+
+  // ✅ si abres otro docEntry, resetea finalizado
+  setFinalizado(false);
+}, [data?.DocEntry, cabecera.IdSustentoTributario]);
 
   const updateRow = (ix, patch) => {
     // 🔒 si ya finalizó o ya tenía gasto => nada editable

@@ -158,16 +158,70 @@ export default function AnticiposPage() {
       if (!res.ok)
         throw new Error(data?.error || data?.message || "Error en preview");
 
-      const normalized = data?.Cabecera
-        ? data
-        : {
-            encontrado: true,
-            docEntry: data?.docEntry ?? data?.DocEntry ?? data?.draft?.DocEntry,
-            DocEntry: data?.docEntry ?? data?.DocEntry ?? data?.draft?.DocEntry,
-            Cabecera: data?.draft,
-            Lineas: data?.draft?.DocumentLines || [],
-            urlPdf: data?.urlPdf || null,
-          };
+      const draft = data?.draft || data?.Cabecera || {};
+const docEntry =
+  data?.docEntry ?? data?.DocEntry ?? draft?.DocEntry ?? draft?.docEntry ?? null;
+
+const normalized = {
+  encontrado: true,
+  docEntry,
+  DocEntry: docEntry,
+
+  // ✅ Cabecera “compat” para FacturaPreviewModal
+  Cabecera: {
+  ...draft,
+
+  Serie: est,
+  PtoEmi: pto,
+  Secuencial: sec,
+
+  NumAtCard:
+    draft?.NumAtCard ||
+    draft?.numAtCard ||
+    (est && pto && sec ? `${est}-${pto}${sec}` : ""),
+
+  CardCode: draft?.CardCode || draft?.cardCode || draft?.U_CardCode || "",
+  CardName: draft?.CardName || draft?.cardName || draft?.U_CardName || "",
+
+  // ✅ Autorización (guardar en varias llaves por compatibilidad)
+  NroAutorizacion:
+    draft?.NroAutorizacion ||
+    draft?.U_NroAutorizacion ||
+    draft?.U_SYP_NROAUT ||
+    draft?.U_SYP_NRO_AUT ||
+    draft?.AuthorizationNumber ||
+    "",
+
+  FechaAutorizacion:
+    draft?.FechaAutorizacion ||
+    draft?.U_FechaAutorizacion ||
+    draft?.U_SYP_FECHAAUT ||
+    draft?.U_SYP_FECHA_AUT ||
+    draft?.AuthorizationDate ||
+    "",
+
+  // ✅ ALIAS: si tu modal lee UDF directo
+  U_SYP_NROAUT:
+    draft?.U_SYP_NROAUT ||
+    draft?.U_SYP_NRO_AUT ||
+    draft?.U_NroAutorizacion ||
+    draft?.NroAutorizacion ||
+    "",
+
+  U_SYP_FECHAAUT:
+    draft?.U_SYP_FECHAAUT ||
+    draft?.U_SYP_FECHA_AUT ||
+    draft?.U_FechaAutorizacion ||
+    draft?.FechaAutorizacion ||
+    "",
+},
+
+
+  // ✅ Líneas
+  Lineas: data?.Lineas || draft?.DocumentLines || [],
+
+  urlPdf: data?.urlPdf || null,
+};
 
       setPreviewData(normalized);
       setPreviewOpen(true);
