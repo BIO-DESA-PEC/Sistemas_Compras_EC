@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
-import styles from './Facturas.module.css';
+import styles from '../Facturas.module.css';
 import { getFacturasSap, getFacturaSapByDraft, getUserByEmail } from '@/app/lib/backend';
 import { useSession } from "next-auth/react";
 
