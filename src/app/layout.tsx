@@ -31,15 +31,18 @@ export default async function RootLayout({
   const user = session ? await getUserByEmail(session.user.email) : null;
 
   return (
-    <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        {/* ✅ SessionProvider para que useSession() funcione */}
-        <Providers session={session}>
-          <GlobalLayoutShell session={session} user={user}>
-            {children}
-          </GlobalLayoutShell>
-        </Providers>
-      </body>
-    </html>
-  );
+  <html lang="en" suppressHydrationWarning>
+    <body
+      suppressHydrationWarning
+      className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+    >
+      <Providers session={session}>
+        <GlobalLayoutShell session={session} user={user}>
+          {children}
+        </GlobalLayoutShell>
+      </Providers>
+    </body>
+  </html>
+);
+
 }

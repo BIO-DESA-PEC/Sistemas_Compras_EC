@@ -186,3 +186,67 @@
 .row { margin:1rem 0; display:flex; align-items:center; gap:1rem; }
 .label { font-weight:600; min-width:12rem; }
 .note { font-size:.85rem; color:#6b7280; margin-left:.5rem; }
+.commentsBox{
+  margin-top: 18px;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #fff;
+  padding: 14px;
+}
+
+.commentsHead{
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.commentsInput{
+  width: 100%;
+  resize: vertical;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 12px;
+  outline: none;
+  font: inherit;
+  background: #fff;
+}
+
+.commentsInput:disabled{
+  background: #f9fafb;
+}
+.pager{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  padding: 10px 0;
+}
+
+.pagerInfo{
+  font-size: 13px;
+  opacity: .8;
+}
+
+.pagerBtns{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.pagerBtn{
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  padding: 8px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.pagerBtn:disabled{
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.pagerPage{
+  font-size: 13px;
+  padding: 0 6px;
+  opacity: .9;
+}

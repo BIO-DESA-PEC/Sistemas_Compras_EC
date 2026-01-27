@@ -2,13 +2,10 @@
 
 import { useState, useMemo, useCallback } from "react";
 import styles from "../../preorden.module.css";
-import {
-  replacePreOCDetail,
-  splitPreOC,
-  requestOCApproval,
-} from "@/app/lib/backend";
+import { replacePreOCDetail, splitPreOC, requestOCApproval } from "@/app/lib/backend";
 import ProveedorPicker from "@/components/SupplierSelect";
-import ProveedorInfoModal from "@/components/ProveedorInfoModal"; 
+import ProveedorInfoModal from "@/components/ProveedorInfoModal";
+
 const IVA_PCT_DEFAULT = 15;
 
 const FP_OPTS = [
@@ -17,17 +14,13 @@ const FP_OPTS = [
   { value: "99", label: "99 - Otra" },
 ];
 
-
-
 function num(v) {
   if (typeof v === "number") return v;
   if (v == null || v === "") return 0;
-
-  const normalized = String(v).replace(",", "."); // acepta 22,40 o 22.40
+  const normalized = String(v).replace(",", ".");
   const n = parseFloat(normalized);
   return Number.isNaN(n) ? 0 : n;
 }
-
 
 function recalcRow(row) {
   const cant = num(row.Cantidad);
@@ -36,9 +29,7 @@ function recalcRow(row) {
   const base = Math.max(0, cant * precio - desc);
 
   const ivaPct =
-    row.IvaPct === "" || row.IvaPct == null
-      ? IVA_PCT_DEFAULT
-      : num(row.IvaPct);
+    row.IvaPct === "" || row.IvaPct == null ? IVA_PCT_DEFAULT : num(row.IvaPct);
 
   const iva = +(base * (ivaPct / 100)).toFixed(2);
   const total = +(base + iva).toFixed(2);
@@ -56,6 +47,7 @@ const EMPTY_ROW = {
   NumeroArticulo: "",
   Proveedor: "",
   ProveedorId: "",
+  CodigoSAP: "",
   EmailAddress: "",
   Phone1: "",
   FechaNecesaria: "",
@@ -71,20 +63,17 @@ const EMPTY_ROW = {
 
 export default function PreOCEditor({ preoc, detalleInicial }) {
   const [detalle, setDetalle] = useState(
-  (detalleInicial || []).map((d) =>
-    recalcRow({
-      ...d,
+    (detalleInicial || []).map((d) =>
+      recalcRow({
+        ...d,
+        ProveedorId: d.ProveedorId ?? d.IdProveedor ?? "",
+        CodigoSAP: d.CodigoSAP ?? d.CardCode ?? "",
+        DiasPago: d.DiasPago ?? d.DiasCredito ?? 0,
+        FormaPago: d.FormaPago ?? d.U_SYP_FPAGO ?? "01",
+      })
+    )
+  );
 
-      // 👇 Normalizamos nombres de campos que vienen del back
-      ProveedorId: d.ProveedorId ?? d.IdProveedor ?? "",
-      CodigoSAP:  d.CodigoSAP  ?? d.CardCode    ?? "",
-
-      DiasPago:   d.DiasPago   ?? d.DiasCredito ?? 0,
-      FormaPago:  d.FormaPago  ?? d.U_SYP_FPAGO ?? "01",
-    })
-  )
-);
-  
   const [proveedorGlobal, setProveedorGlobal] = useState("");
   const [subtotalGlobal, setSubtotalGlobal] = useState("");
   const [descuentoGlobal, setDescuentoGlobal] = useState("");
@@ -94,30 +83,71 @@ export default function PreOCEditor({ preoc, detalleInicial }) {
   const editable = estado === "BORRADOR";
   const [provInfo, setProvInfo] = useState(null);
 
-   async function cargarProveedor(id) {
-  // si no comienza con PL, le ponemos PL delante
-  const cardCode = id?.startsWith("PL") ? id : `PL${id}`;
+  // ✅ Tooltip con TODA la info de la fila
+  const tooltipRow = useCallback((r) => {
+    const parts = [
+      r.NumeroArticulo ? `Artículo/Servicio: ${r.NumeroArticulo}` : null,
 
-  console.log("[cargarProveedor] id recibido:", id, "cardCode usado:", cardCode);
+      r.Proveedor ? `Proveedor: ${r.Proveedor}` : null,
+      r.CodigoSAP ? `Código SAP: ${r.CodigoSAP}` : null,
+      r.ProveedorId ? `IdProveedor: ${r.ProveedorId}` : null,
+      r.EmailAddress ? `Email: ${r.EmailAddress}` : null,
+      r.Phone1 ? `Tel: ${r.Phone1}` : null,
 
-  try {
-    const res = await fetch(
-      `https://back-compras-ec.onrender.com/api/proveedores-sap/${encodeURIComponent(cardCode)}`
-    );
+      r.FechaNecesaria ? `Fecha necesaria: ${r.FechaNecesaria}` : null,
+      `Cantidad: ${r.Cantidad ?? ""}`,
+      `Precio: ${Number(r.Precio ?? 0).toFixed(2)}`,
+      `Descuento: ${Number(r.Descuento ?? 0).toFixed(2)}`,
+      `IVA %: ${Number(r.IvaPct ?? 0).toFixed(2)}`,
+      `Días crédito: ${r.DiasPago ?? 0}`,
+      `Forma pago: ${r.FormaPago || ""}`,
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || `Error ${res.status}`);
+      `Base: ${Number(r.__base ?? 0).toFixed(2)}`,
+      `IVA: ${Number(r.Iva ?? 0).toFixed(2)}`,
+      `Total: ${Number(r.Total ?? 0).toFixed(2)}`,
+    ];
+
+    return parts.filter(Boolean).join("\n");
+  }, []);
+
+  async function cargarProveedor(id) {
+    const cardCode = id?.startsWith("PL") ? id : `PL${id}`;
+    try {
+      const res = await fetch(
+        `https://back-compras-ec.onrender.com/api/proveedores-sap/${encodeURIComponent(
+          cardCode
+        )}`
+      );
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Error ${res.status}`);
+      }
+
+      const data = await res.json();
+      setProvInfo(data);
+    } catch (e) {
+      console.error("Error cargando proveedor SAP:", e);
+      alert(`No se pudo cargar la información del proveedor: ${e.message}`);
     }
-
-    const data = await res.json();
-    setProvInfo(data);
-  } catch (e) {
-    console.error("Error cargando proveedor SAP:", e);
-    alert(`No se pudo cargar la información del proveedor: ${e.message}`);
   }
-}
 
+  // ===== PAGINACIÓN DETALLE =====
+  const PAGE_SIZE = 10;
+  const [pageDet, setPageDet] = useState(1);
+
+  const totalPages = useMemo(() => {
+    return Math.max(1, Math.ceil((detalle?.length || 0) / PAGE_SIZE));
+  }, [detalle]);
+
+  const safePage = Math.min(pageDet, totalPages);
+
+  const pageSlice = useMemo(() => {
+    const start = (safePage - 1) * PAGE_SIZE;
+    return detalle.slice(start, start + PAGE_SIZE);
+  }, [detalle, safePage]);
+
+  const pageStartIndex = useMemo(() => (safePage - 1) * PAGE_SIZE, [safePage]);
 
   const totals = useMemo(() => {
     const sub = detalle.reduce((s, r) => s + num(r.__base), 0);
@@ -129,9 +159,10 @@ export default function PreOCEditor({ preoc, detalleInicial }) {
       tot: +tot.toFixed(2),
     };
   }, [detalle]);
+
   const proveedoresUnicos = useMemo(() => {
     const setProv = new Set();
-    detalle.forEach(r => {
+    detalle.forEach((r) => {
       const key = r.CodigoSAP || r.ProveedorId || r.Proveedor;
       if (key) setProv.add(key);
     });
@@ -139,62 +170,51 @@ export default function PreOCEditor({ preoc, detalleInicial }) {
   }, [detalle]);
 
   const onChange = useCallback((i, field, value) => {
-  setDetalle((prev) => {
-    const rows = [...prev];
-
-    // guardamos el valor tal cual (string o número)
-    const next = {
-      ...rows[i],
-      [field]: value,
-    };
-
-    // recalcRow se encarga de parsear con num()
-    rows[i] = recalcRow(next);
-    return rows;
-  });
-}, []);
-
-
-  const addRow = useCallback(
-  () =>
     setDetalle((prev) => {
+      const rows = [...prev];
+      const next = { ...rows[i], [field]: value };
+      rows[i] = recalcRow(next);
+      return rows;
+    });
+  }, []);
+
+  const addRow = useCallback(() => {
+    setDetalle((prev) => {
+      let next;
       if (prev.length === 0) {
-        return [
+        next = [recalcRow({ ...EMPTY_ROW })];
+      } else {
+        const last = prev[prev.length - 1];
+        next = [
+          ...prev,
           recalcRow({
             ...EMPTY_ROW,
+            Proveedor: last.Proveedor,
+            ProveedorId: last.ProveedorId,
+            CodigoSAP: last.CodigoSAP,
+            EmailAddress: last.EmailAddress,
+            Phone1: last.Phone1,
+            FechaNecesaria: last.FechaNecesaria,
+            IvaPct: last.IvaPct,
+            DiasPago: last.DiasPago,
+            FormaPago: last.FormaPago,
           }),
         ];
       }
+      const newTotalPages = Math.max(1, Math.ceil(next.length / PAGE_SIZE));
+      setPageDet(newTotalPages);
+      return next;
+    });
+  }, []);
 
-      const last = prev[prev.length - 1];
-
-      return [
-        ...prev,
-        recalcRow({
-          ...EMPTY_ROW,
-
-          // 👇 estos valores se mantienen
-          Proveedor: last.Proveedor,
-          ProveedorId: last.ProveedorId,
-          EmailAddress: last.EmailAddress,
-          Phone1: last.Phone1,
-
-          FechaNecesaria: last.FechaNecesaria,
-
-          IvaPct: last.IvaPct,
-          DiasPago: last.DiasPago,
-          FormaPago: last.FormaPago,
-        }),
-      ];
-    }),
-  []
-);
-
-
-  const removeRow = useCallback(
-    (i) => setDetalle((d) => d.filter((_, k) => k !== i)),
-    []
-  );
+  const removeRow = useCallback((realIndex) => {
+    setDetalle((prev) => {
+      const next = prev.filter((_, k) => k !== realIndex);
+      const newTotalPages = Math.max(1, Math.ceil(next.length / PAGE_SIZE));
+      setPageDet((p) => Math.min(p, newTotalPages));
+      return next;
+    });
+  }, []);
 
   const guardarDetalle = useCallback(async () => {
     await replacePreOCDetail(preoc.IdPreOC, detalle);
@@ -219,179 +239,171 @@ export default function PreOCEditor({ preoc, detalleInicial }) {
     setEstado("SEPARADA");
     window.location.href = `/ordenes/${r.created[0].IdOC}`;
   }, [editable, estado, preoc.IdPreOC]);
+
   function aplicarGlobalizado() {
-  if (!proveedorGlobal) return;
+    if (!proveedorGlobal) return;
 
-  const subtotal = num(subtotalGlobal);
-  const desc = num(descuentoGlobal);
-  const ivaPct = num(ivaGlobal);
+    const subtotal = num(subtotalGlobal);
+    const desc = num(descuentoGlobal);
+    const ivaPct = num(ivaGlobal);
 
-  const base = subtotal - desc;
-  if (base <= 0) {
-    alert("El subtotal - descuento debe ser mayor a 0.");
-    return;
-  }
+    const base = subtotal - desc;
+    if (base <= 0) {
+      alert("El subtotal - descuento debe ser mayor a 0.");
+      return;
+    }
 
-  setDetalle(prev => {
-    let rows = [...prev];
+    setDetalle((prev) => {
+      let rows = [...prev];
 
-    const indices = rows
-      .map((r, idx) => ({
-        key: r.CodigoSAP || r.ProveedorId || r.Proveedor,
-        idx
-      }))
-      .filter(x => x.key === proveedorGlobal)
-      .map(x => x.idx);
+      const indices = rows
+        .map((r, idx) => ({ key: r.CodigoSAP || r.ProveedorId || r.Proveedor, idx }))
+        .filter((x) => x.key === proveedorGlobal)
+        .map((x) => x.idx);
 
-    if (!indices.length) return prev;
+      if (!indices.length) return prev;
 
-    // Primera línea monetaria
-    const first = indices[0];
+      const first = indices[0];
 
-    rows[first] = recalcRow({
-      ...rows[first],
-      Precio: subtotal,
-      Descuento: desc,
-      IvaPct: ivaPct,
-    });
-
-    // Otras líneas = solo informativas
-    indices.slice(1).forEach(i => {
-      rows[i] = recalcRow({
-        ...rows[i],
-        Precio: 0,
-        Descuento: 0,
+      rows[first] = recalcRow({
+        ...rows[first],
+        Precio: subtotal,
+        Descuento: desc,
         IvaPct: ivaPct,
       });
-    });
 
-    return rows;
-  });
-}
+      indices.slice(1).forEach((i) => {
+        rows[i] = recalcRow({
+          ...rows[i],
+          Precio: 0,
+          Descuento: 0,
+          IvaPct: ivaPct,
+        });
+      });
+
+      return rows;
+    });
+  }
 
   return (
     <div className={`${styles.ocTheme} ${styles.preordenRoot}`}>
       {/* === CARD SUPERIOR: TOTAL PRE-ORDEN === */}
       <div className={styles.summaryCard}>
-  <div className={styles.summaryHeader}>
-    <div>
-      <div className={styles.summaryLabel}>Total Pre-Orden</div>
-      <div className={styles.summaryAmount}>
-        {totals.tot.toLocaleString("es-EC", {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        })}
+        <div className={styles.summaryHeader}>
+          <div>
+            <div className={styles.summaryLabel}>Total Pre-Orden</div>
+            <div className={styles.summaryAmount}>
+              {totals.tot.toLocaleString("es-EC", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </div>
+          </div>
+
+          <div className={styles.summaryStatus}>
+            <span className={styles.muted}>
+              {editable ? "Edición habilitada" : "Edición bloqueada"}
+            </span>
+          </div>
+        </div>
+
+        {editable && (
+          <div className={styles.globalBar}>
+            <span className={styles.globalTitle}>Monto globalizado por proveedor:</span>
+
+            <select
+              className={styles.globalInput}
+              value={proveedorGlobal}
+              onChange={(e) => setProveedorGlobal(e.target.value)}
+              title="Selecciona un proveedor para globalizar"
+            >
+              <option value="">Seleccione…</option>
+              {proveedoresUnicos.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+
+            {proveedorGlobal && (
+              <>
+                <input
+                  type="number"
+                  className={styles.globalInput}
+                  placeholder="Subtotal"
+                  value={subtotalGlobal}
+                  onChange={(e) => setSubtotalGlobal(e.target.value)}
+                  title="Subtotal a aplicar al proveedor seleccionado"
+                />
+
+                <input
+                  type="number"
+                  className={styles.globalInput}
+                  placeholder="Desc"
+                  value={descuentoGlobal}
+                  onChange={(e) => setDescuentoGlobal(e.target.value)}
+                  title="Descuento a aplicar al proveedor seleccionado"
+                />
+
+                <input
+                  type="number"
+                  className={styles.globalInput}
+                  placeholder="IVA %"
+                  value={ivaGlobal}
+                  onChange={(e) => setIvaGlobal(e.target.value)}
+                  title="IVA % a aplicar al proveedor seleccionado"
+                />
+
+                <span
+                  className={styles.globalTotal}
+                  title="Total calculado (Subtotal - Desc) * (1 + IVA%)"
+                >
+                  Total:{" "}
+                  {(
+                    num(subtotalGlobal - descuentoGlobal) *
+                    (1 + num(ivaGlobal) / 100)
+                  ).toFixed(2)}
+                </span>
+
+                <button className={styles.globalBtn} onClick={aplicarGlobalizado} title="Aplicar globalizado">
+                  Aplicar
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </div>
-    </div>
 
-    <div className={styles.summaryStatus}>
-      <span className={styles.muted}>
-        {editable ? "Edición habilitada" : "Edición bloqueada"}
-      </span>
-    </div>
-  </div>
-
-  {/* 👇 Barra globalizada, ahora dentro de la tarjeta */}
-  {editable && (
-    <div className={styles.globalBar}>
-      <span className={styles.globalTitle}>Monto globalizado por proveedor:</span>
-
-      <select
-        className={styles.globalInput}
-        value={proveedorGlobal}
-        onChange={e => setProveedorGlobal(e.target.value)}
-      >
-        <option value="">Seleccione…</option>
-        {proveedoresUnicos.map(p => (
-          <option key={p} value={p}>{p}</option>
-        ))}
-      </select>
-
-      {proveedorGlobal && (
-        <>
-          <input
-            type="number"
-            className={styles.globalInput}
-            placeholder="Subtotal"
-            value={subtotalGlobal}
-            onChange={(e) => setSubtotalGlobal(e.target.value)}
-          />
-
-          <input
-            type="number"
-            className={styles.globalInput}
-            placeholder="Desc"
-            value={descuentoGlobal}
-            onChange={(e) => setDescuentoGlobal(e.target.value)}
-          />
-
-          <input
-            type="number"
-            className={styles.globalInput}
-            placeholder="IVA %"
-            value={ivaGlobal}
-            onChange={(e) => setIvaGlobal(e.target.value)}
-          />
-
-          <span className={styles.globalTotal}>
-            Total:{" "}
-            {(
-              num(subtotalGlobal - descuentoGlobal) *
-              (1 + num(ivaGlobal) / 100)
-            ).toFixed(2)}
-          </span>
-
-          <button
-            className={styles.globalBtn}
-            onClick={aplicarGlobalizado}
-          >
-            Aplicar
-          </button>
-        </>
+      {(preoc?.Comentario || "").trim() && (
+        <div className={styles.commentBox} title={`Comentario: ${preoc.Comentario}`}>
+          <div className={styles.commentLabel}>Comentario</div>
+          <div className={styles.commentText}>{preoc.Comentario}</div>
+        </div>
       )}
-    </div>
-  )}
-</div>
 
-
-      {/* === CARD PRINCIPAL: tabla + botones === */}
+      {/* === CARD PRINCIPAL === */}
       <div className={styles.card}>
         <div className={styles.actions}>
           <div className={styles.leftTools} />
           <div className={styles.right}>
             {editable ? (
               <>
-                <button
-                  className={styles.secondary}
-                  type="button"
-                  onClick={addRow}
-                >
+                <button className={styles.secondary} type="button" onClick={addRow} title="Agregar una nueva línea">
                   Agregar línea
                 </button>
-                <button
-                  className={styles.secondary}
-                  type="button"
-                  onClick={guardarDetalle}
-                >
+                <button className={styles.secondary} type="button" onClick={guardarDetalle} title="Guardar el detalle de la Pre-Orden">
                   Guardar detalle
                 </button>
-                <button
-                  className={styles.primary}
-                  type="button"
-                  onClick={crearOCs}
-                >
+                <button className={styles.primary} type="button" onClick={crearOCs} title="Crear OCs separadas por proveedor">
                   Crear OCs por proveedor
                 </button>
               </>
             ) : (
-              <span className={styles.muted}>
-                Pre-Orden {estado} (no editable)
-              </span>
+              <span className={styles.muted}>Pre-Orden {estado} (no editable)</span>
             )}
           </div>
         </div>
 
-        {/* Tabla */}
         <div className={styles.tableWrapper}>
           <table className={styles.table}>
             <thead>
@@ -410,225 +422,251 @@ export default function PreOCEditor({ preoc, detalleInicial }) {
                 <th className={styles.colActions}></th>
               </tr>
             </thead>
-            <tbody>
-              {detalle.map((r, i) => (
-                <tr key={i}>
-                  <td className={styles.colArticulo}>
-                  <input
-                    className={styles.input}
-                    disabled={!editable}
-                    value={r.NumeroArticulo || ""}
-                    title={r.NumeroArticulo || ""}   // 👈 tooltip con el texto completo
-                    onChange={(e) =>
-                      onChange(i, "NumeroArticulo", e.target.value)
-                    }
-                    placeholder="Artículo/Servicio…"
-                  />
-                </td>
-                 <td className={styles.colProveedor}>
-  <div className={styles.proveedorWrapper}>
-    <ProveedorPicker
-      disabled={!editable}
-      value={r.Proveedor || ""}
-      onChange={(nombre, prov) => {
-        onChange(i, "Proveedor", nombre);
 
-        if (prov) {
-          // IdProveedor (RUC/CI)
-          onChange(i, "ProveedorId", prov.IdProveedor);
-          // Código SAP (CardCode)
-          onChange(i, "CodigoSAP", prov.CodigoSAP);
+           <tbody>
+  {pageSlice.map((r, i) => {
+    const realIndex = pageStartIndex + i;
 
-          onChange(i, "EmailAddress", prov.EmailAddress || "");
-          onChange(i, "Phone1", prov.Phone1 || "");
+    const tipArticulo  = `Artículo/Servicio: ${r.NumeroArticulo || ""}`;
+    const tipProveedor = [
+  r.Proveedor ? `Proveedor: ${r.Proveedor}` : null,
+  r.CodigoSAP ? `Código SAP: ${r.CodigoSAP}` : null,
+  r.ProveedorId ? `IdProveedor: ${r.ProveedorId}` : null,
+  r.EmailAddress ? `Email: ${r.EmailAddress}` : null,
+  r.Phone1 ? `Tel: ${r.Phone1}` : null,
+].filter(Boolean).join("\n");
 
-          if (typeof prov.DiasCredito === "number") {
-            onChange(i, "DiasPago", prov.DiasCredito);
-          }
+    const tipFecha   = `Fecha necesaria: ${r.FechaNecesaria || ""}`;
+    const tipCant    = `Cantidad: ${r.Cantidad ?? ""}`;
+    const tipPrecio  = `Precio: ${Number(r.Precio || 0).toFixed(2)}`;
+    const tipDesc    = `Descuento: ${Number(r.Descuento || 0).toFixed(2)}`;
+    const tipIvaPct  = `IVA %: ${Number(r.IvaPct || 0).toFixed(2)}`;
+    const tipDias    = `Días crédito: ${r.DiasPago ?? 0}`;
+    const tipForma   = `Forma pago: ${r.FormaPago || ""}`;
+    const tipIva     = `IVA: ${Number(r.Iva || 0).toFixed(2)}`;
+    const tipTotal   = `Total: ${Number(r.Total || 0).toFixed(2)}`;
 
-          if (prov.U_SYP_FPAGO) {
-            onChange(i, "FormaPago", prov.U_SYP_FPAGO);
-          }
-        }
-      }}
-    />
+    return (
+      <tr key={realIndex}>
+        <td className={styles.colArticulo}>
+          <input
+            className={styles.input}
+            disabled={!editable}
+            value={r.NumeroArticulo || ""}
+            title={tipArticulo}
+            onChange={(e) => onChange(realIndex, "NumeroArticulo", e.target.value)}
+            placeholder="Artículo/Servicio…"
+          />
+        </td>
 
-    {/* 👇 OJITO SIEMPRE VISIBLE */}
-    <button
-  className={styles.viewInfoBtn}
-  type="button"
-  title="Ver información del proveedor"
-  onClick={() => {
-    const key = r.CodigoSAP || r.ProveedorId;
-    if (!key) {
-      alert(
-        "Esta línea no tiene asociado un código SAP o IdProveedor. " +
-        "Guarda la pre-orden con un proveedor válido para ver el detalle."
-      );
-      return;
+        <td className={styles.colProveedor}>
+          <div className={styles.proveedorWrapper}>
+            {/* ✅ Tooltip SOLO de proveedor */}
+            <div style={{ width: "100%" }} title={tipProveedor}>
+              <ProveedorPicker
+  disabled={!editable}
+  value={r.Proveedor || ""}
+  title={tipProveedor}   // ✅ AQUÍ
+  onChange={(nombre, prov) => {
+    onChange(realIndex, "Proveedor", nombre);
+
+    if (prov) {
+      onChange(realIndex, "ProveedorId", prov.IdProveedor);
+      onChange(realIndex, "CodigoSAP", prov.CodigoSAP);
+      onChange(realIndex, "EmailAddress", prov.EmailAddress || "");
+      onChange(realIndex, "Phone1", prov.Phone1 || "");
+
+      if (typeof prov.DiasCredito === "number") {
+        onChange(realIndex, "DiasPago", prov.DiasCredito);
+      }
+      if (prov.U_SYP_FPAGO) {
+        onChange(realIndex, "FormaPago", prov.U_SYP_FPAGO);
+      }
     }
-    cargarProveedor(key);
   }}
->
-  <span className={styles.eyeIcon}>👁️</span>
-</button>
+/>
 
-  </div>
-</td>
+            </div>
 
+            <button
+              className={styles.viewInfoBtn}
+              type="button"
+              title="Ver información del proveedor (SAP)"
+              onClick={() => {
+                const key = r.CodigoSAP || r.ProveedorId;
+                if (!key) return alert("Esta línea no tiene código SAP o IdProveedor.");
+                cargarProveedor(key);
+              }}
+            >
+              <span className={styles.eyeIcon}>👁️</span>
+            </button>
+          </div>
+        </td>
 
-                  <td className={styles.colFecha}>
-                    <input
-                      type="date"
-                      className={styles.input}
-                      disabled={!editable}
-                      value={r.FechaNecesaria || ""}
-                      onChange={(e) =>
-                        onChange(i, "FechaNecesaria", e.target.value)
-                      }
-                    />
-                  </td>
+        <td className={styles.colFecha}>
+          <input
+            type="date"
+            className={styles.input}
+            disabled={!editable}
+            value={r.FechaNecesaria || ""}
+            title={tipFecha}
+            onChange={(e) => onChange(realIndex, "FechaNecesaria", e.target.value)}
+          />
+        </td>
 
-                  <td className={styles.colCant}>
-                    <input
-                      className={`${styles.input} ${styles.inputNum}`}
-                      disabled={!editable}
-                      type="number"
-                      value={r.Cantidad ?? 1}
-                      onChange={(e) =>
-                        onChange(i, "Cantidad", e.target.value)
-                      }
-                    />
-                  </td>
+        <td className={styles.colCant}>
+          <input
+            className={`${styles.input} ${styles.inputNum}`}
+            disabled={!editable}
+            type="number"
+            value={r.Cantidad ?? 1}
+            title={tipCant}
+            onChange={(e) => onChange(realIndex, "Cantidad", e.target.value)}
+          />
+        </td>
 
-                  <td className={styles.colPrecio}>
-  <input
-    className={`${styles.input} ${styles.inputNum}`}
-    disabled={
-  !editable ||
-  (proveedorGlobal &&
-   proveedorGlobal === (r.CodigoSAP || r.ProveedorId || r.Proveedor))
-}
+        <td className={styles.colPrecio}>
+          <input
+            className={`${styles.input} ${styles.inputNum}`}
+            disabled={
+              !editable ||
+              (proveedorGlobal &&
+                proveedorGlobal === (r.CodigoSAP || r.ProveedorId || r.Proveedor))
+            }
+            type="number"
+            min="0"
+            step="0.01"
+            inputMode="decimal"
+            value={r.Precio ?? ""}
+            title={tipPrecio}
+            onChange={(e) => onChange(realIndex, "Precio", e.target.value)}
+          />
+        </td>
 
-    type="number"
-    min="0"
-    step="0.01"
-    inputMode="decimal"
-    value={r.Precio ?? ""}
-    title={String(r.Precio ?? "")}    // 👈 tooltip
-    onChange={(e) => onChange(i, "Precio", e.target.value)}
-  />
-</td>
+        <td className={styles.colDesc}>
+          <input
+            className={`${styles.input} ${styles.inputNum}`}
+            disabled={
+              !editable ||
+              (proveedorGlobal &&
+                proveedorGlobal === (r.CodigoSAP || r.ProveedorId || r.Proveedor))
+            }
+            type="number"
+            min="0"
+            step="0.01"
+            inputMode="decimal"
+            value={r.Descuento ?? ""}
+            title={tipDesc}
+            onChange={(e) => onChange(realIndex, "Descuento", e.target.value)}
+          />
+        </td>
 
-                  <td className={styles.colDesc}>
-                    <input
-                      className={`${styles.input} ${styles.inputNum}`}
-                      disabled={
-  !editable ||
-  (proveedorGlobal &&
-   proveedorGlobal === (r.CodigoSAP || r.ProveedorId || r.Proveedor))
-}
+        <td className={styles.colIvaPct}>
+          <input
+            className={`${styles.input} ${styles.inputNum}`}
+            disabled={
+              !editable ||
+              (proveedorGlobal &&
+                proveedorGlobal === (r.CodigoSAP || r.ProveedorId || r.Proveedor))
+            }
+            type="number"
+            value={r.IvaPct ?? 15}
+            title={tipIvaPct}
+            onChange={(e) => onChange(realIndex, "IvaPct", e.target.value)}
+          />
+        </td>
 
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      inputMode="decimal"
-                      value={r.Descuento ?? ""}
-                      title={String(r.Descuento ?? "")} // 👈 tooltip
-                      onChange={(e) => onChange(i, "Descuento", e.target.value)}
-                    />
-                  </td>
+        <td className={styles.colDias}>
+          <input
+            className={`${styles.input} ${styles.inputNum}`}
+            disabled={true}
+            type="number"
+            value={r.DiasPago ?? 0}
+            readOnly
+            title={tipDias}
+          />
+        </td>
 
-                  <td className={styles.colIvaPct}>
-                    <input
-                      className={`${styles.input} ${styles.inputNum}`}
-                      disabled={
-  !editable ||
-  (proveedorGlobal &&
-   proveedorGlobal === (r.CodigoSAP || r.ProveedorId || r.Proveedor))
-}
-
-                      type="number"
-                      value={r.IvaPct ?? 15}
-                      onChange={(e) => onChange(i, "IvaPct", e.target.value)}
-                    />
-                  </td>
-
-                  <td className={styles.colDias}>
-                    <input
-                      className={`${styles.input} ${styles.inputNum}`}
-                      disabled={true}     // 👈 siempre bloqueado
-                      type="number"
-                      value={r.DiasPago ?? 0}
-                      readOnly
-                    />
-                  </td>
-
-                  <td className={styles.colForma}>
-                    <div className={styles.selectWrap}>
-                      <select
-                        className={styles.select}
-                        disabled={true}     // 👈 siempre bloqueado
-                        value={r.FormaPago || "01"}
-                        readOnly
-                      >
-                        {FP_OPTS.map((o) => (
-                          <option key={o.value} value={o.value}>
-                            {o.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </td>
-
-                  <td className={styles.colIva}>
-                    <div className={styles.num}>
-                      {Number(r.Iva || 0).toFixed(2)}
-                    </div>
-                  </td>
-
-                  <td className={styles.colTotal}>
-                    <div className={styles.num}>
-                      {Number(r.Total || 0).toFixed(2)}
-                    </div>
-                  </td>
-
-                  <td className={styles.colActions}>
-                    <button
-                      disabled={!editable}
-                      className={styles.linkBtn}
-                      type="button"
-                      onClick={() => removeRow(i)}
-                      title="Eliminar"
-                    >
-                      ✕
-                    </button>
-                  </td>
-                </tr>
+        <td className={styles.colForma}>
+          <div className={styles.selectWrap}>
+            <select
+              className={styles.select}
+              disabled={true}
+              value={r.FormaPago || "01"}
+              readOnly
+              title={tipForma}
+            >
+              {FP_OPTS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
               ))}
-            </tbody>
+            </select>
+          </div>
+        </td>
+
+        <td className={styles.colIva}>
+          <div className={styles.num} title={tipIva}>
+            {Number(r.Iva || 0).toFixed(2)}
+          </div>
+        </td>
+
+        <td className={styles.colTotal}>
+          <div className={styles.num} title={tipTotal}>
+            {Number(r.Total || 0).toFixed(2)}
+          </div>
+        </td>
+
+        <td className={styles.colActions}>
+          <button
+            disabled={!editable}
+            className={styles.linkBtn}
+            type="button"
+            onClick={() => removeRow(realIndex)}
+            title="Eliminar línea"
+          >
+            ✕
+          </button>
+        </td>
+      </tr>
+    );
+  })}
+</tbody>
           </table>
+
+          <div className={styles.paginationBar}>
+            <button className={styles.pageBtn} disabled={safePage <= 1} onClick={() => setPageDet(1)} type="button" title="Primera página">
+              «
+            </button>
+            <button className={styles.pageBtn} disabled={safePage <= 1} onClick={() => setPageDet((p) => Math.max(1, p - 1))} type="button" title="Página anterior">
+              ‹
+            </button>
+
+            <span className={styles.pageInfo} title="Información de paginación">
+              Página {safePage} de {totalPages} — {detalle.length} líneas
+            </span>
+
+            <button className={styles.pageBtn} disabled={safePage >= totalPages} onClick={() => setPageDet((p) => Math.min(totalPages, p + 1))} type="button" title="Página siguiente">
+              ›
+            </button>
+            <button className={styles.pageBtn} disabled={safePage >= totalPages} onClick={() => setPageDet(totalPages)} type="button" title="Última página">
+              »
+            </button>
+          </div>
         </div>
 
-        {/* Totales */}
         <div className={styles.totals}>
-          <div className={styles.totalBox}>
+          <div className={styles.totalBox} title="Suma de bases (Cantidad*Precio - Descuento)">
             <div className={styles.totalLabel}>Subtotal</div>
-            <div className={styles.totalValue}>
-              {totals.sub.toFixed(2)}
-            </div>
+            <div className={styles.totalValue}>{totals.sub.toFixed(2)}</div>
           </div>
-          <div className={styles.totalBox}>
+          <div className={styles.totalBox} title="Suma de IVA de todas las líneas">
             <div className={styles.totalLabel}>IVA</div>
-            <div className={styles.totalValue}>
-              {totals.iva.toFixed(2)}
-            </div>
+            <div className={styles.totalValue}>{totals.iva.toFixed(2)}</div>
           </div>
-          <div className={`${styles.totalBox} ${styles.totalBoxEm}`}>
+          <div className={`${styles.totalBox} ${styles.totalBoxEm}`} title="Total final (Subtotal + IVA)">
             <div className={styles.totalLabel}>Total</div>
-            <div className={styles.totalValue}>
-              {totals.tot.toFixed(2)}
-            </div>
+            <div className={styles.totalValue}>{totals.tot.toFixed(2)}</div>
           </div>
         </div>
 
@@ -636,14 +674,8 @@ export default function PreOCEditor({ preoc, detalleInicial }) {
           * Edición solo disponible en estado BORRADOR.
         </p>
       </div>
-      {provInfo && (
-  <ProveedorInfoModal
-    proveedor={provInfo}
-    onClose={() => setProvInfo(null)}
-  />
-)}
 
+      {provInfo && <ProveedorInfoModal proveedor={provInfo} onClose={() => setProvInfo(null)} />}
     </div>
-    
   );
 }

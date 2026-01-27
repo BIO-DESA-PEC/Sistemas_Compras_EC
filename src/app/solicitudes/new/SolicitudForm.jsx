@@ -33,6 +33,7 @@ export default function SolicitudForm({
   const [sending, setSending] = useState(false);
   const [okId, setOkId] = useState(initial?.cabecera?.IdSolicitud ?? null);
   const [errorMsg, setErrorMsg] = useState("");
+  const [comentarios, setComentarios] = useState(initial?.cabecera?.Comentarios ?? "");
 
   // ✅ ===== ROLES (según tu endpoint by-email) =====
   // user.RolNombre viene como: "Administrador", "Compras", "Usuario", "Contabilidad", etc.
@@ -50,18 +51,20 @@ export default function SolicitudForm({
 
   // Precarga cuando viene "initial"
   useEffect(() => {
-    if (initial?.detalle?.length) {
-      setRows(
-        initial.detalle.map((d) => ({
-          NumeroArticulo: d.NumeroArticulo ?? "",
-          Descripcion: d.Descripcion ?? "",
-          // Asegura yyyy-mm-dd si viene con tiempo
-          FechaNecesaria: (d.FechaNecesaria || "").slice(0, 10),
-          Cantidad: d.Cantidad ?? 1,
-        }))
-      );
-    }
-  }, [initial]);
+  if (initial?.cabecera?.Tipo) {
+    setTipo((initial.cabecera.Tipo || "ARTICULO").toUpperCase());
+  }
+  if (initial?.detalle?.length) {
+    setRows(
+      initial.detalle.map((d) => ({
+        NumeroArticulo: d.NumeroArticulo ?? "",
+        Descripcion: d.Descripcion ?? "",
+        FechaNecesaria: (d.FechaNecesaria || "").slice(0, 10),
+        Cantidad: d.Cantidad ?? 1,
+      }))
+    );
+  }
+}, [initial]);
 
   // Si cambian a SERVICIO, normalizamos Cantidad=1 y vaciamos FechaNecesaria (oculta)
   useEffect(() => {
@@ -74,6 +77,22 @@ export default function SolicitudForm({
     }
   }, [tipo]);
 
+  const PAGE_SIZE = 10;
+  const [page, setPage] = useState(1);
+
+  // Total páginas según filas
+  const totalPages = useMemo(() => {
+    return Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  }, [rows.length]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+    if (page < 1) setPage(1);
+  }, [page, totalPages]);
+
+  const pageStart = (page - 1) * PAGE_SIZE;
+  const pageRows = rows.slice(pageStart, pageStart + PAGE_SIZE);
+
   const setRow = (i, patch) => {
     setRows(prev => {
       const next = [...prev];
@@ -82,15 +101,22 @@ export default function SolicitudForm({
     });
   };
 
-  // Agregar renglón copiando la última fecha (solo para ARTÍCULO)
   const addRow = () =>
-    setRows(prev => {
-      const lastFecha =
-        [...prev].reverse().find(r => (r.FechaNecesaria || "").trim())?.FechaNecesaria || "";
-      const newRow = { ...emptyRow(), FechaNecesaria: (tipo === "ARTICULO" ? lastFecha : "") };
-      if (tipo === "SERVICIO") newRow.Cantidad = 1;
-      return [...prev, newRow];
-    });
+  setRows(prev => {
+    const lastFecha =
+      [...prev].reverse().find(r => (r.FechaNecesaria || "").trim())?.FechaNecesaria || "";
+
+    const newRow = { ...emptyRow(), FechaNecesaria: (tipo === "ARTICULO" ? lastFecha : "") };
+    if (tipo === "SERVICIO") newRow.Cantidad = 1;
+
+    const next = [...prev, newRow];
+
+    // ✅ saltar a la última página
+    const lastPage = Math.max(1, Math.ceil(next.length / PAGE_SIZE));
+    setPage(lastPage);
+
+    return next;
+  });
 
   const removeRow = (i) =>
     setRows(prev => prev.length === 1 ? prev : prev.filter((_, idx) => idx !== i));
@@ -156,7 +182,8 @@ export default function SolicitudForm({
           cabecera: {
             IdUsuario: user.IdUsuario,
             DepartamentoId: user.DepartamentoId,
-            Tipo: tipo, // opcional para auditoría
+            Tipo: tipo,
+             Comentarios: comentarios?.trim() || "",
           },
           detalle,
           autoApprove,
@@ -177,7 +204,7 @@ export default function SolicitudForm({
 
       if (isEdit && initial?.cabecera?.IdSolicitud) {
         const id = initial.cabecera.IdSolicitud;
-        const payload = { detalle, autoApprove, Tipo: tipo }; // Tipo opcional
+        const payload = { detalle, autoApprove, Tipo: tipo, Comentarios: comentarios?.trim() || "" };
         const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/solicitudes/${id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -282,61 +309,114 @@ export default function SolicitudForm({
           {tipo === "ARTICULO" && <div>Cant.</div>}
           <div></div>
         </div>
-
         {/* Filas */}
-        {rows.map((r, i) => (
-          <div className={styles.gridRow} key={i}>
-            <div className={styles.mono}>#{i + 1}</div>
+        {pageRows.map((r, localIdx) => {
+  const i = pageStart + localIdx; // índice real en rows
 
-            <input
-              className={styles.input}
-              disabled={disabledAll}
-              value={r.NumeroArticulo}
-              onChange={e => setRow(i, { NumeroArticulo: e.target.value })}
-              placeholder={tipo === "SERVICIO" ? "Mantenimiento preventivo" : "AF-1001"}
-            />
+  return (
+    <div className={styles.gridRow} key={i}>
+      <div className={styles.mono}>#{i + 1}</div>
 
-            <textarea
-              className={styles.input}
-              disabled={disabledAll}
-              value={r.Descripcion}
-              onChange={e => setRow(i, { Descripcion: e.target.value })}
-              placeholder="Describe el artículo o servicio solicitado…"
-              rows={1}
-            />
+      <input
+        className={styles.input}
+        disabled={disabledAll}
+        value={r.NumeroArticulo}
+        onChange={e => setRow(i, { NumeroArticulo: e.target.value })}
+        placeholder={tipo === "SERVICIO" ? "Mantenimiento preventivo" : "AF-1001"}
+      />
 
-            {tipo === "ARTICULO" && (
-              <input
-                className={styles.input}
-                type="date"
-                disabled={disabledAll}
-                value={r.FechaNecesaria}
-                onChange={e => setRow(i, { FechaNecesaria: e.target.value })}
-              />
-            )}
+      <textarea
+        className={styles.input}
+        disabled={disabledAll}
+        value={r.Descripcion}
+        onChange={e => setRow(i, { Descripcion: e.target.value })}
+        placeholder="Describe el artículo o servicio solicitado…"
+        rows={1}
+      />
 
-            {tipo === "ARTICULO" && (
-              <input
-                className={styles.input}
-                type="number" min="1" step="1"
-                disabled={disabledAll}
-                value={r.Cantidad}
-                onChange={e => setRow(i, { Cantidad: e.target.value })}
-              />
-            )}
+      {tipo === "ARTICULO" && (
+        <input
+          className={styles.input}
+          type="date"
+          disabled={disabledAll}
+          value={r.FechaNecesaria}
+          onChange={e => setRow(i, { FechaNecesaria: e.target.value })}
+        />
+      )}
 
-            {!disabledAll && (
-              <button
-                type="button"
-                className={styles.iconBtn}
-                onClick={() => removeRow(i)}
-                title="Eliminar"
-              >
-                <Trash2 size={16} />
-              </button>
-            )}
-          </div>
-        ))}
+      {tipo === "ARTICULO" && (
+        <input
+          className={styles.input}
+          type="number" min="1" step="1"
+          disabled={disabledAll}
+          value={r.Cantidad}
+          onChange={e => setRow(i, { Cantidad: e.target.value })}
+        />
+      )}
+
+      {!disabledAll && (
+        <button
+          type="button"
+          className={styles.iconBtn}
+          onClick={() => removeRow(i)}
+          title="Eliminar"
+        >
+          <Trash2 size={16} />
+        </button>
+      )}
+    </div>
+  );
+})}
+{/* ✅ Paginador */}
+{rows.length > PAGE_SIZE && (
+  <div className={styles.pager}>
+    <div className={styles.pagerInfo}>
+      Mostrando <b>{pageStart + 1}</b>–<b>{Math.min(pageStart + PAGE_SIZE, rows.length)}</b> de <b>{rows.length}</b>
+    </div>
+
+    <div className={styles.pagerBtns}>
+      <button
+        type="button"
+        className={styles.pagerBtn}
+        disabled={disabledAll || page === 1}
+        onClick={() => setPage(1)}
+      >
+        «
+      </button>
+
+      <button
+        type="button"
+        className={styles.pagerBtn}
+        disabled={disabledAll || page === 1}
+        onClick={() => setPage(p => Math.max(1, p - 1))}
+      >
+        Anterior
+      </button>
+
+      <div className={styles.pagerPage}>
+        Página <b>{page}</b> / <b>{totalPages}</b>
+      </div>
+
+      <button
+        type="button"
+        className={styles.pagerBtn}
+        disabled={disabledAll || page === totalPages}
+        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+      >
+        Siguiente
+      </button>
+
+      <button
+        type="button"
+        className={styles.pagerBtn}
+        disabled={disabledAll || page === totalPages}
+        onClick={() => setPage(totalPages)}
+      >
+        »
+      </button>
+    </div>
+  </div>
+)}
 
         {!disabledAll && (
           <div className={styles.toolbar}>
@@ -390,7 +470,17 @@ export default function SolicitudForm({
     {isView ? "Volver al listado" : "Cancelar"}
   </button>
 </div>
-
+<div className={styles.row}>
+  <label className={styles.label}>Comentarios</label>
+  <textarea
+    className={styles.input}
+    rows={3}
+    disabled={disabledAll}
+    value={comentarios}
+    onChange={(e) => setComentarios(e.target.value)}
+    placeholder="Observaciones adicionales…"
+  />
+</div>
       </form>
     </div>
   );

@@ -27,6 +27,9 @@ export default function FacturasSAPPage() {
   // Buscador
   const [search, setSearch] = useState('');
 
+  // ✅ NUEVO: filtro de gasto (all | sin | con)
+  const [gastoFilter, setGastoFilter] = useState('all');
+
   // Paginado
   const [page, setPage] = useState(1);
 
@@ -98,14 +101,29 @@ export default function FacturasSAPPage() {
     });
   }, [facturas, search]);
 
+  // ✅ NUEVO: filtro por gasto usando cache gastoByDraft
+  const filteredFacturasFinal = useMemo(() => {
+    if (gastoFilter === 'all') return filteredFacturas;
+
+    return filteredFacturas.filter((f) => {
+      const docEntry = Number(f?.DraftDocEntry);
+      const hasGasto = Number.isFinite(docEntry) ? !!gastoByDraft[docEntry] : false;
+
+      if (gastoFilter === 'con') return hasGasto;
+      if (gastoFilter === 'sin') return !hasGasto;
+
+      return true;
+    });
+  }, [filteredFacturas, gastoFilter, gastoByDraft]);
+
   // --------- paginado ----------
-  const totalRows = filteredFacturas.length;
+  const totalRows = filteredFacturasFinal.length;
   const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
 
   const currentPage = Math.min(page, totalPages);
   const startIndex = (currentPage - 1) * PAGE_SIZE;
   const endIndex = startIndex + PAGE_SIZE;
-  const paginatedFacturas = filteredFacturas.slice(startIndex, endIndex);
+  const paginatedFacturas = filteredFacturasFinal.slice(startIndex, endIndex);
 
   const goToPage = (p) => {
     if (p < 1 || p > totalPages) return;
@@ -206,6 +224,22 @@ export default function FacturasSAPPage() {
               setPage(1);
             }}
           />
+
+          {/* ✅ NUEVO: filtro por gasto */}
+          <select
+            className={styles.filterSelect}
+            value={gastoFilter}
+            onChange={(e) => {
+              setGastoFilter(e.target.value);
+              setPage(1);
+            }}
+            title="Filtrar por gasto"
+          >
+            <option value="all">Todos</option>
+            <option value="sin">Sin gasto</option>
+            <option value="con">Con gasto</option>
+          </select>
+
           <button type="button" className={styles.btnSecondary} onClick={loadFacturas}>
             Actualizar
           </button>
@@ -229,6 +263,10 @@ export default function FacturasSAPPage() {
                 <th>Estado</th>
                 <th>Proveedor (SAP)</th>
                 <th>Total (SAP)</th>
+
+                {/* ✅ NUEVO: estado de gasto al lado de Acciones */}
+                <th>Gasto</th>
+
                 <th>Acciones</th>
               </tr>
             </thead>
@@ -252,6 +290,17 @@ export default function FacturasSAPPage() {
                       {Number(f.TotalSAP != null ? f.TotalSAP : f.DocTotal || 0)
                         .toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
+
+                    {/* ✅ NUEVO: pill estado gasto */}
+                    <td>
+                      <span
+                        className={`${styles.gastoPill} ${hasGasto ? styles.gastoOk : styles.gastoPend}`}
+                        title={hasGasto ? "Con gasto registrado" : "Sin gasto"}
+                      >
+                        {hasGasto ? "✅ Con gasto" : "⛔ Sin gasto"}
+                      </span>
+                    </td>
+
                     <td>
                       <button
                         className={styles.btn}

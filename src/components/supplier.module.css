@@ -1,113 +1,190 @@
 /* ===== Contenedor / inputs base ===== */
-/* El contenedor del combo se adapta a la celda de la tabla */
 .combo {
   position: relative;
   width: 100%;
-  min-width: 0;          /* para que no “ensanche” la columna */
+  min-width: 0;
 }
 
-/* Input del proveedor: igual al input de la OC */
+/* Input base */
 .input {
   appearance: none;
   width: 100%;
   box-sizing: border-box;
-
-  /* 🔥 mismo alto que var(--h) de la OC */
   height: 40px;
-  padding: 0 34px 0 12px;   /* SIN padding arriba/abajo */
-
+  padding: 0 34px 0 12px;
   border: 1px solid #E5E7EB;
   border-radius: 10px;
   background: #fff;
-
   font-size: 13px;
   line-height: 20px;
   color: #111827;
-
   outline: none;
   transition: box-shadow .15s ease, border-color .15s ease;
 }
-
 .input:focus {
   border-color: #60A5FA;
   box-shadow: 0 0 0 3px rgba(96,165,250,.25);
 }
 
-/* El botón de toggle YA usa .input + .comboToggle, así que con esto basta.
-   No hace falta tocar .comboToggle ni .chev. */
-
-
 .inputReadonly { color: #6B7280; background: #F9FAFB; }
 
-.comboToggle { text-align: left; position: relative; }
-.chev { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 12px; }
+.comboToggle{
+  text-align: left;
+  position: relative;
 
-/* ===== Panel (se posiciona con inline style: position:fixed) ===== */
-.comboPanel {
-  background: #fff;
-  border: 1px solid #E5E7EB;
-  border-radius: 10px;
-  box-shadow: 0 10px 30px rgba(0,0,0,.12);
-  overflow: auto; /* scrolling interno para listas largas */
+  white-space: nowrap;       /* <-- 1 sola línea */
+  overflow: hidden;          /* <-- corta lo que sobra */
+  text-overflow: ellipsis;   /* <-- ... */
+  display: block;            /* <-- necesario para ellipsis */
+  width: 100%;
 }
 
-/* ===== Search ===== */
-.comboSearchWrap { padding: 8px; border-bottom: 1px solid #F3F4F6; }
-.comboSearch {
+.chev{
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+/* ===== Estados ===== */
+.state { padding: 12px; color: #6B7280; font-size: 13px; }
+.dot { opacity: .7; }
+
+/* ================================================================= */
+/* ✅ NUEVO: MODAL SELECTOR DE PROVEEDOR (esto reemplaza el dropdown feo) */
+/* ================================================================= */
+
+.pickerOverlay{
+  position: fixed;
+  inset: 0;
+  background: rgba(17,24,39,.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 16px;
+}
+
+.pickerModal{
+  width: min(920px, 100%);
+  max-height: min(80vh, 720px);
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.25);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.pickerHeader{
+  padding: 16px 18px;
+  border-bottom: 1px solid #eef1f5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pickerTitle{
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.pickerSub{
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 2px;
+}
+
+.pickerClose{
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 8px;
+  border-radius: 10px;
+}
+.pickerClose:hover{
+  background: #f3f4f6;
+}
+
+.pickerSearchWrap{
+  padding: 14px 18px;
+  border-bottom: 1px solid #eef1f5;
+}
+
+.pickerSearch{
   width: 100%;
-  height: 34px;
-  padding: 6px 10px;
-  border: 1px solid #E5E7EB;
-  border-radius: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
   outline: none;
   font-size: 14px;
 }
-.comboSearch:focus { border-color: #93C5FD; box-shadow: 0 0 0 3px rgba(147,197,253,.25); }
+.pickerSearch:focus{
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 3px rgba(59,130,246,.15);
+}
 
-/* ===== Lista ===== */
-.comboList { max-height: 280px; overflow: auto; }
-.state { padding: 12px; color: #6B7280; font-size: 13px; }
+.pickerList{
+  padding: 8px;
+  overflow: auto;
+  flex: 1;
+}
 
-.comboItem {
+.pickerItem{
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  background: #fff;
+  border-radius: 12px;
+  padding: 12px 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+}
+.pickerItem:hover{
+  background: #f8fafc;
+  border-color: #e5e7eb;
+}
+
+.pickerMain{ min-width: 0; }
+.pickerName{ font-weight: 700; font-size: 14px; }
+.pickerMeta{
+  margin-top: 2px;
+  font-size: 12px;
+  color: #6b7280;
   display: flex;
   align-items: center;
-  width: 100%;
-  padding: 10px 12px;
-  gap: 12px;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
+  gap: 8px;
 }
-.comboItem:hover { background: #F9FAFB; }
 
-.comboMain { flex: 1; min-width: 0; }
-.titleLine { margin-bottom: 2px; }
-.title { font-weight: 600; color: #111827; }
-.metaLine { color: #6B7280; font-size: 12px; display: flex; gap: 6px; }
-.dot { opacity: .7; }
-.comboSide { color: #6B7280; font-size: 12px; white-space: nowrap; }
-.email { overflow: hidden; text-overflow: ellipsis; max-width: 220px; display: inline-block; }
+.pickerSide{
+  font-size: 12px;
+  color: #6b7280;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  align-self: center;
+}
 
-/* ===== Footer ===== */
-.comboFooter {
-  padding: 8px;
-  border-top: 1px solid #F3F4F6;
+.pickerFooter{
+  padding: 14px 18px;
+  border-top: 1px solid #eef1f5;
   display: flex;
   justify-content: flex-end;
+  gap: 10px;
 }
-.btnPrimary {
-  height: 32px;
-  padding: 0 12px;
-  border-radius: 8px;
-  border: 1px solid #2563EB;
-  background: #2563EB;
-  color: #fff;
-  font-weight: 600;
-  cursor: pointer;
-}
-.btnPrimary:hover { filter: brightness(1.05); }
 
-/* ===== Modal (overlay + caja) ===== */
+/* ================================================================= */
+/* ✅ TU MODAL DE CREAR PROVEEDOR (lo dejo igual con tus estilos) */
+/* ================================================================= */
+
 .modalOverlay {
   position: fixed;
   inset: 0;
@@ -119,34 +196,19 @@
 
 .modal {
   width: min(920px, 92vw);
-  max-height: 90vh;           /* <-- NO se pasa de la pantalla */
+  max-height: 90vh;
   background: #fff;
   border-radius: 14px;
   box-shadow: 0 25px 60px rgba(0,0,0,.25);
   box-sizing: border-box;
-
-  display: flex;              /* header + contenido scrollable */
+  display: flex;
   flex-direction: column;
 }
 
-/* ==== Fix: que nada se salga del modal ==== */
 .modal, .modal * { box-sizing: border-box; }
 
-/* locales: permitir encoger y no desbordar */
-.field, .input, .comboSearch, .btn, .btnGhost {
-  min-width: 0;
-  max-width: 100%;
-  width: 100%;
-}
+.field, .btn, .btnGhost { min-width: 0; max-width: 100%; width: 100%; }
 
-/* alturas coherentes (solo clases locales) */
-.input, .comboSearch {
-  height: 36px;
-  line-height: 20px;
-  overflow: hidden;
-}
-
-/* ===== Header modal ===== */
 .modalHeader {
   padding: 18px 22px 8px 22px;
   flex-shrink: 0;
@@ -156,16 +218,15 @@
 .hSub { color: #6B7280; margin-top: 4px; }
 .req { color: #EF4444; }
 
-/* ===== Form grid ===== */
 .formGrid {
   padding: 16px 22px 22px 22px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px 16px;
-
-  flex: 1;                /* ocupa el resto del modal */
-  overflow-y: auto;       /* <-- scroll vertical */
+  flex: 1;
+  overflow-y: auto;
 }
+
 .sectionTitle {
   grid-column: 1 / -1;
   margin-top: 6px;
@@ -176,12 +237,13 @@
   letter-spacing: .02em;
   text-transform: uppercase;
 }
+
 .field { display: grid; gap: 6px; }
 .label { color: #374151; font-size: 14px; }
 .span2 { grid-column: 1 / -1; }
+
 .hint { display:block; color:#6B7280; font-size: 11px; margin-top: 4px; }
 
-/* ===== Alertas / acciones ===== */
 .alertError {
   background: #FEF2F2;
   color: #B91C1C;
@@ -190,12 +252,14 @@
   padding: 10px 12px;
   font-size: 13px;
 }
+
 .modalActions {
   display: flex;
   gap: 10px;
   justify-content: flex-end;
   margin-top: 8px;
 }
+
 .btn {
   height: 36px;
   padding: 0 16px;
@@ -207,6 +271,7 @@
   cursor: pointer;
 }
 .btn:disabled { opacity: .5; cursor: default; }
+
 .btnGhost {
   height: 36px;
   padding: 0 14px;
@@ -214,14 +279,11 @@
   border: 1px solid #D1D5DB;
   background:#fff;
   color:#111827;
+  cursor: pointer;
 }
 .btnGhost:hover { background:#F9FAFB; }
 
-/* ===== Responsive ===== */
-@media (max-width: 720px) {
-  .formGrid { grid-template-columns: 1fr; }
-}
-
+/* Textarea */
 .textarea {
   width: 100%;
   box-sizing: border-box;
@@ -234,12 +296,13 @@
   color: #111827;
   resize: vertical;
 }
-
 .textarea:focus {
   border-color: #60A5FA;
   box-shadow: 0 0 0 3px rgba(96,165,250,.25);
   outline: none;
 }
+
+/* Label row + checkbox inline */
 .labelRow {
   display: flex;
   align-items: center;
@@ -252,9 +315,58 @@
   align-items: center;
   gap: 0.35rem;
   font-size: 0.8rem;
-  color: #777; /* o tu var de texto suave */
+  color: #777;
 }
 
-.inlineCheck input[type='checkbox'] {
-  margin: 0;
+.inlineCheck input[type='checkbox'] { margin: 0; }
+
+@media (max-width: 720px) {
+  .formGrid { grid-template-columns: 1fr; }
+}
+
+/* ✅ Botón azul pro: "+ Nuevo proveedor" */
+.btnPrimary{
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 12px;
+
+  border: 1px solid #2563EB;
+  background: linear-gradient(180deg, #3B82F6 0%, #2563EB 100%);
+  color: #fff;
+
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: .2px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+
+  cursor: pointer;
+  box-shadow: 0 10px 18px rgba(37,99,235,.18);
+  transition: transform .12s ease, box-shadow .12s ease, filter .12s ease;
+}
+
+.btnPrimary:hover{
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+  box-shadow: 0 14px 22px rgba(37,99,235,.24);
+}
+
+.btnPrimary:active{
+  transform: translateY(0);
+  box-shadow: 0 8px 14px rgba(37,99,235,.18);
+}
+
+.btnPrimary:focus{
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(59,130,246,.25), 0 10px 18px rgba(37,99,235,.18);
+}
+
+.btnPrimary:disabled{
+  opacity: .6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }

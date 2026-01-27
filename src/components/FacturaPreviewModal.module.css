@@ -59,6 +59,16 @@
 }
 .fieldFull{ grid-column: 1 / -1; } /* ocupa todo el renglón */
 
+/* ✅ IMPORTANTE: que se vea con "..." (y el tooltip muestra todo) */
+.field input,
+.field select,
+.trow input,
+.trow select{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
 /* Normalización de date inputs (para mantener altura uniforme) */
 .field input[type="date"]{
   line-height:calc(var(--ctl-h) - 2px);
@@ -88,7 +98,7 @@
   position: sticky;
   top: 0;
   z-index: 5;
-  background:#f3f4f6;     /* asegurar fondo sólido */
+  background:#f3f4f6;
   border-bottom:1px solid #e5e7eb;
   padding:10px 12px;
 }
@@ -98,12 +108,12 @@
 .tscroll{
   max-height:380px;
   overflow:auto;
-  background:#fff; /* mantiene blanco */
+  background:#fff;
 }
 
 /* Elimina el zebra o déjalo blanco */
 .tscroll .trow:nth-child(2n){
-  background:#fff; /* ya no gris */
+  background:#fff;
 }
 
 /* celdas */
@@ -112,6 +122,18 @@
   width:100%; height:var(--ctl-h);
   border:1px solid #e5e7eb; border-radius:10px; padding:8px 10px; background:#fff; outline:none;
 }
+/* ✅ PARA QUE NO SE PEGUE / NO SE ENCIME EN GRID */
+.trow > div,
+.thead > div{
+  min-width: 0;      /* clave #1: permite que el contenido se encoja */
+  overflow: hidden;  /* clave #2: evita que se salga y tape al vecino */
+}
+
+/* (opcional) si quieres más aire entre columnas */
+.thead, .trow{
+  gap: 12px; /* antes 8px */
+}
+
 .trow input:focus, .trow select:focus{
   border-color:#2563eb; box-shadow:0 0 0 3px #dbeafe;
 }
@@ -120,9 +142,9 @@
 .sticky{
   position: sticky;
   left: 0;
-  background: inherit;     /* se ve bien en thead y filas */
+  background: inherit;
   border-right:1px solid #eef2f4;
-  z-index: 6;              /* por encima del resto de celdas */
+  z-index: 6;
 }
 .numInp{ text-align:right; }
 .right{ text-align:right; justify-content:flex-end; }
@@ -175,4 +197,26 @@
       110px 110px 120px 140px 200px 100px 40px;
     min-width:980px;
   }
+}
+.ssWrap{
+  width: 100%;
+}
+/* se lo pasas al SearchSelect como inputClassName */
+.ssInput {
+  width: 100%;
+  height: var(--ctl-h);
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #fff;
+  outline: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ssInput:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px #dbeafe;
 }
