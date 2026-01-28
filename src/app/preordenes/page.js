@@ -7,7 +7,7 @@ import styles from "./preordenes.module.css";
 const PAGE_SIZE_DEFAULT = 15;
 
 // ==================== FETCH ====================
-async function fetchList({ userId, page, pageSize, q }) {
+async function fetchList({ page, pageSize, q }) {
   const base =
     process.env.NEXT_PUBLIC_BACKEND_URL ||
     "https://back-compras-ec.onrender.com";
@@ -15,18 +15,16 @@ async function fetchList({ userId, page, pageSize, q }) {
   const qp = new URLSearchParams();
   qp.set("page", String(page || 1));
   qp.set("pageSize", String(pageSize || PAGE_SIZE_DEFAULT));
-  if (userId) qp.set("userId", String(userId));
   if (q) qp.set("q", q);
 
   const res = await fetch(`${base}/api/preoc?${qp.toString()}`, {
     cache: "no-store",
   });
 
-  if (!res.ok)
-    return { page, pageSize, totalRows: 0, items: [] };
-
+  if (!res.ok) return { page, pageSize, totalRows: 0, items: [] };
   return res.json();
 }
+
 
 // ==================== ESTADO ====================
 function estadoBadge(estado, styles) {
@@ -97,7 +95,7 @@ export default async function PreOCListPage({ searchParams }) {
   const q        = String(sp?.q ?? "").trim();
 
   // 🔄 data
-  const data  = await fetchList({ userId, page, pageSize, q });
+  const data = await fetchList({ page, pageSize, q });
   const items = data?.items ?? [];
 
   const { totalPages, makeHref } = pager({
