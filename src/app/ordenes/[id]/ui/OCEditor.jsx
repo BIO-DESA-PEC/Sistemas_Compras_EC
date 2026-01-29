@@ -11,6 +11,7 @@ import {
   getOCApprovalStatus,
   previewPrefacturaOC,
   updatePagoOC,
+  getUserByEmail, // ✅ FALTABA en tu snippet (lo usas en useEffect)
 } from "@/app/lib/backend";
 import { useSession } from "next-auth/react";
 
@@ -98,9 +99,14 @@ function makeSummaryRow({ proveedor, total, ivaPct, fecha }) {
 // ================================================
 export default function OCEditor({ oc, detalleInicial }) {
   const router = useRouter();
-    // Id de la Orden de Compra (para pasar al modal)
+
+  // ✅ Id de la Orden de Compra (para pasar al modal)
   const ocId = oc?.IdOC ?? oc?.IdOc ?? oc?.idOc ?? null;
 
+  // ✅ Tipo OC para decidir modal (SERVICIO / ARTICULO)
+  const tipoOC = useMemo(() => (oc?.Tipo || "").trim().toUpperCase(), [oc?.Tipo]);
+  const isServicio = tipoOC === "SERVICIO";
+  const isArticulo = tipoOC === "ARTICULO";
 
   // --------------------------------
   // Estado base
@@ -117,28 +123,29 @@ export default function OCEditor({ oc, detalleInicial }) {
     aprobadorId: null,
     aprobadorNombre: "",
   });
-const { data: session } = useSession();
-const [user, setUser] = useState(null);
 
-useEffect(() => {
-  let alive = true;
+  const { data: session } = useSession();
+  const [user, setUser] = useState(null);
 
-  (async () => {
-    try {
-      const email = session?.user?.email;
-      if (!email) return;
+  useEffect(() => {
+    let alive = true;
 
-      const u = await getUserByEmail(email);
-      if (!alive) return;
+    (async () => {
+      try {
+        const email = session?.user?.email;
+        if (!email) return;
 
-      setUser(u);
-    } catch (e) {
-      console.error("No pude cargar usuario por email", e);
-    }
-  })();
+        const u = await getUserByEmail(email);
+        if (!alive) return;
 
-  return () => { alive = false; };
-}, [session?.user?.email]);
+        setUser(u);
+      } catch (e) {
+        console.error("No pude cargar usuario por email", e);
+      }
+    })();
+
+    return () => { alive = false; };
+  }, [session?.user?.email]);
 
   // Derivados útiles para UI/locks
   const enAprobacion = ocAprob?.existe && ocAprob.estado === "PENDIENTE";
@@ -162,6 +169,9 @@ useEffect(() => {
   const [previewData, setPreviewData] = useState(null);
   const [diasPago, setDiasPago] = useState(oc.DiasPago ?? 0);
 
+  // ✅ NUEVO: tipo de facturación actual (para elegir modal de llenado)
+  const [factTipo, setFactTipo] = useState(null); // "SERVICIO" | "ARTICULO" | null
+
   // Bloqueo de edición
   const editable = !(
     estado === "PROCESADA" ||
@@ -184,6 +194,13 @@ useEffect(() => {
     setDetalle((detalleInicial || []).map(recalcRow));
     setEstado(oc.Estado);
     setDiasPago(oc.DiasPago ?? 0);
+
+    // ✅ resetea modales al cambiar de OC
+    setPreviewOpen(false);
+    setPreviewData(null);
+    setShowFacturaForm(false);
+    setFactTipo(null);
+
     // Consulta estado de aprobación para esta OC
     (async () => {
       try {
@@ -388,21 +405,31 @@ useEffect(() => {
   // ================================================
   // Facturación
   // ================================================
-  const mandarAFacturar = useCallback(
-    async (modo = "NORMAL") => {
-      try {
-        const st = await getOCApprovalStatus(oc.IdOC);
-        if (!st?.existe || st.estado !== "APROBADA") {
-          const quien = st?.aprobadorNombre ? ` — pendiente de: ${st.aprobadorNombre}` : "";
-          alert(`Para facturar, la OC debe estar APROBADA. Estado actual: ${st?.estado || "SIN APROBACIÓN"}${quien}`);
-          return;
-        }
-      } catch {}
-      setFactMode(modo);
-      setShowFacturaForm(true);
-    },
-    [oc.IdOC]
-  );
+  const mandarAFacturar = useCallback(async (modo = "NORMAL") => {
+  // (tu validación de aprobación queda igual)
+  try {
+    const st = await getOCApprovalStatus(oc.IdOC);
+    if (!st?.existe || st.estado !== "APROBADA") {
+      alert("Para facturar, la OC debe estar APROBADA.");
+      return;
+    }
+  } catch {}
+
+  setFactMode(modo);
+
+  // ✅ 1) lee el tipo de la OC
+  const t = String(oc?.Tipo || "").trim().toUpperCase();
+
+  // ✅ 2) valida y setea el tipo para renderizar el modal correcto
+  if (t !== "SERVICIO" && t !== "ARTICULO") {
+    alert("La OC no tiene Tipo válido (SERVICIO/ARTICULO). Revisa OrdenCompraCabecera.Tipo.");
+    return;
+  }
+
+  setFactTipo(t);          // 👈 aquí decides qué modal corresponde
+  setShowFacturaForm(true);// 👈 aquí lo abres
+}, [oc.IdOC, oc?.Tipo]);
+
 
   // Guardar encabezado de pago
   const guardarPagoEncabezado = useCallback(async () => {
@@ -469,6 +496,7 @@ useEffect(() => {
   // Cancelar formulario de prefactura
   const cancelarPrefactura = useCallback(() => {
     setShowFacturaForm(false);
+    setFactTipo(null);
     setFactEstable("");
     setFactPtoEmi("");
     setFactSecu("");
@@ -500,7 +528,7 @@ useEffect(() => {
   // ================================================
   // Render
   // ================================================
-    return (
+  return (
     <div className={`${styles.ocTheme} ${styles.card}`}>
 
       {/* === Top: resumen + acciones === */}
@@ -572,6 +600,7 @@ useEffect(() => {
             <button
               className={styles.ok}
               onClick={() => mandarAFacturar("NORMAL")}
+              title={tipoOC ? `Tipo: ${tipoOC}` : "Tipo no definido"}
             >
               Facturar
             </button>
@@ -580,7 +609,7 @@ useEffect(() => {
 
       </div>
 
-            {/* Tabla principal */}
+      {/* Tabla principal */}
       <div className={styles.tableWrapper}>
         <table className={styles.table}>
           <thead>
@@ -804,7 +833,6 @@ useEffect(() => {
         </table>
       </div>
 
-
       {/* Totales */}
       <div className={styles.totals}>
         <div className={styles.totalBox}>
@@ -850,13 +878,16 @@ useEffect(() => {
         </p>
       )}
 
-      {/* Modal de datos para facturar */}
-      {showFacturaForm && (
+      {/* ✅ Modal de datos para facturar (elige por Tipo OC) */}
+      {showFacturaForm && factTipo === "SERVICIO" && (
         <div className={styles.modalOverlay} role="dialog" aria-modal="true">
           <div className={styles.modalBox}>
             <h3 className={styles.modalTitle}>
-              {factMode === "SIN_APROB" ? "Facturar (sin aprobación)" : "Datos para facturar"}
+              {factMode === "SIN_APROB"
+                ? "Facturar (sin aprobación) — SERVICIO"
+                : "Datos para facturar — SERVICIO"}
             </h3>
+
             <div className={styles.formGrid}>
               <label>
                 <span>Establecimiento</span>
@@ -886,6 +917,7 @@ useEffect(() => {
                 />
               </label>
             </div>
+
             <div className={styles.modalActions}>
               <button className={styles.secondary} onClick={cancelarPrefactura} disabled={sending}>
                 Cancelar
@@ -898,24 +930,71 @@ useEffect(() => {
         </div>
       )}
 
-      {/* Modal de PREVIEW (archivo aparte) */}
-           <FacturaPreviewModal
-  open={previewOpen}
-  data={previewData ? { ...previewData, OcId: ocId } : null}
-  onClose={() => {
-    setPreviewOpen(false);
-    setPreviewData(null);
-  }}
-  onUse={handleUseDraft}
+      {showFacturaForm && factTipo === "ARTICULO" && (
+        <div className={styles.modalOverlay} role="dialog" aria-modal="true">
+          <div className={styles.modalBox}>
+            <h3 className={styles.modalTitle}>
+              {factMode === "SIN_APROB"
+                ? "Facturar (sin aprobación) — ARTÍCULO"
+                : "Datos para facturar — ARTÍCULO"}
+            </h3>
 
-  // ✅ ESTO ES EL PASO 5
-  rolNombre={user?.RolNombre}
-  rolId={user?.RolId}
+            {/* 🔥 Por ahora es igual (mismos 3 campos). Si ARTICULO lleva extras, aquí los metes. */}
+            <div className={styles.formGrid}>
+              <label>
+                <span>Establecimiento</span>
+                <input
+                  value={factEstable}
+                  onChange={(e) => setFactEstable(e.target.value)}
+                  placeholder="001"
+                  maxLength={10}
+                />
+              </label>
+              <label>
+                <span>Punto de emisión</span>
+                <input
+                  value={factPtoEmi}
+                  onChange={(e) => setFactPtoEmi(e.target.value)}
+                  placeholder="002"
+                  maxLength={10}
+                />
+              </label>
+              <label className={styles.gridFull}>
+                <span>Secuencial</span>
+                <input
+                  value={factSecu}
+                  onChange={(e) => setFactSecu(e.target.value)}
+                  placeholder="00001234"
+                  maxLength={20}
+                />
+              </label>
+            </div>
 
-  // opcional: etiqueta del origen
-  modo="ordenes"
-/>
+            <div className={styles.modalActions}>
+              <button className={styles.secondary} onClick={cancelarPrefactura} disabled={sending}>
+                Cancelar
+              </button>
+              <button className={styles.primary} onClick={confirmarPrefactura} disabled={sending}>
+                {sending ? "Enviando..." : "Confirmar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
+      {/* ✅ Modal de PREVIEW (archivo aparte) */}
+      <FacturaPreviewModal
+        open={previewOpen}
+        data={previewData ? { ...previewData, OcId: ocId, Tipo: tipoOC } : null} // opcional: le pasas Tipo
+        onClose={() => {
+          setPreviewOpen(false);
+          setPreviewData(null);
+        }}
+        onUse={handleUseDraft}
+        rolNombre={user?.RolNombre}
+        rolId={user?.RolId}
+        modo="ordenes"
+      />
 
     </div>
   );
