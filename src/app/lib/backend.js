@@ -333,3 +333,46 @@ export async function getFacturaSapByDraft(docEntry) {
   return res.json();
 }
 
+export async function uploadFacturaAdjuntoOC(idOc, { Establecimiento, PuntoEmision, Secuencial, file }, userEmail) {
+  const fd = new FormData();
+  fd.append("Establecimiento", Establecimiento);
+  fd.append("PuntoEmision", PuntoEmision);
+  fd.append("Secuencial", Secuencial);
+  fd.append("file", file);
+
+  const url = apiUrl(`/api/oc/${idOc}/factura/adjunto`);
+  const res = await fetch(url, {
+    method: "POST",
+    body: fd,
+    headers: {
+      ...(userEmail ? { "X-User-Email": userEmail } : {}),
+    },
+  });
+
+  if (!res.ok) throw new Error(await safeText(res));
+  return await res.json();
+}
+
+export async function listFacturaAdjuntosOC(idOc) {
+  const url = apiUrl(`/api/oc/${idOc}/factura/adjuntos`);
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(await safeText(res));
+  return await res.json();
+}
+
+export function downloadFacturaAdjuntoOC(idOc, idAdj) {
+  // redirige a backend que a su vez redirige a downloadUrl temporal
+  return apiUrl(`/api/oc/${idOc}/factura/adjunto/${idAdj}/download`);
+}
+
+export async function getFacturaInfoOC(idOC) {
+  return fetchJSON(`/api/oc/${idOC}/factura-info`);
+}
+
+export async function saveFacturaInfoOC(idOC, payload) {
+  return fetchJSON(`/api/oc/${idOC}/factura-info`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}

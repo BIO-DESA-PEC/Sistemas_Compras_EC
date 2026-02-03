@@ -6,12 +6,15 @@ import { useRouter } from "next/navigation";
 import {
   replaceOCDetail,
   updateOCState,
-  // createPrefacturaOC, // lo dejo comentado por si lo usas después
   requestOCApproval,
   getOCApprovalStatus,
   previewPrefacturaOC,
   updatePagoOC,
-  getUserByEmail, // ✅ FALTABA en tu snippet (lo usas en useEffect)
+  getUserByEmail,
+  uploadFacturaAdjuntoOC,
+  listFacturaAdjuntosOC,
+  downloadFacturaAdjuntoOC,
+  getFacturaInfoOC, saveFacturaInfoOC
 } from "@/app/lib/backend";
 import { useSession } from "next-auth/react";
 
@@ -114,6 +117,15 @@ export default function OCEditor({ oc, detalleInicial }) {
   const [detalle, setDetalle] = useState((detalleInicial || []).map(recalcRow));
   const [estado, setEstado] = useState(oc.Estado);
 
+  // ✅ NUEVO: adjuntos de factura
+  const [showUploadFactura, setShowUploadFactura] = useState(false);
+  const [adjuntosFactura, setAdjuntosFactura] = useState([]);
+  const [upEst, setUpEst] = useState("");
+  const [upPto, setUpPto] = useState("");
+  const [upSec, setUpSec] = useState("");
+  const [upFile, setUpFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+
   // Aprobación por niveles (estado remoto)
   const [ocAprob, setOcAprob] = useState({
     existe: false,
@@ -153,8 +165,8 @@ export default function OCEditor({ oc, detalleInicial }) {
   const estadoUI = enAprobacion
     ? "EN_APROBACION"
     : estado === "GENERADA" && aprobadaTotal
-    ? "PENDIENTE_FACTURAR"
-    : estado;
+      ? "PENDIENTE_FACTURAR"
+      : estado;
 
   // Modo de precios y utilidades para total por proveedor
   const [priceMode, setPriceMode] = useState("LINEA");
@@ -201,6 +213,14 @@ export default function OCEditor({ oc, detalleInicial }) {
     setShowFacturaForm(false);
     setFactTipo(null);
 
+    // ✅ resetea adjuntos UI
+    setShowUploadFactura(false);
+    setUpEst("");
+    setUpPto("");
+    setUpSec("");
+    setUpFile(null);
+    setAdjuntosFactura([]);
+
     // Consulta estado de aprobación para esta OC
     (async () => {
       try {
@@ -236,6 +256,46 @@ export default function OCEditor({ oc, detalleInicial }) {
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+    // ✅ NUEVO: cargar Est/Pto/Sec guardados para esta OC
+  (async () => {
+    try {
+      if (!oc?.IdOC) return;
+      const r = await getFacturaInfoOC(oc.IdOC);
+      const info = r?.data || null;
+
+      if (info) {
+        // precarga para que NO te vuelva a pedir
+        setFactEstable(info.Establecimiento || "");
+        setFactPtoEmi(info.PuntoEmision || "");
+        setFactSecu(info.Secuencial || "");
+
+        // opcional: también para modal de subida (si quieres)
+        setUpEst(info.Establecimiento || "");
+        setUpPto(info.PuntoEmision || "");
+        setUpSec(info.Secuencial || "");
+      }
+    } catch (e) {
+      console.warn("No pude cargar factura-info", e);
+    }
+  })();
+
+  }, [oc?.IdOC]);
+
+  // ✅ NUEVO: cargar adjuntos cada vez que cambie la OC (o el estado)
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        if (!oc?.IdOC) return;
+        const a = await listFacturaAdjuntosOC(oc.IdOC);
+        if (!alive) return;
+        setAdjuntosFactura(Array.isArray(a) ? a : []);
+      } catch (e) {
+        if (!alive) return;
+        setAdjuntosFactura([]);
+      }
+    })();
+    return () => { alive = false; };
   }, [oc?.IdOC]);
 
   // --------------------------------
@@ -406,7 +466,6 @@ export default function OCEditor({ oc, detalleInicial }) {
   // Facturación
   // ================================================
   const mandarAFacturar = useCallback(async (modo = "NORMAL") => {
-  // (tu validación de aprobación queda igual)
   try {
     const st = await getOCApprovalStatus(oc.IdOC);
     if (!st?.existe || st.estado !== "APROBADA") {
@@ -417,18 +476,47 @@ export default function OCEditor({ oc, detalleInicial }) {
 
   setFactMode(modo);
 
-  // ✅ 1) lee el tipo de la OC
   const t = String(oc?.Tipo || "").trim().toUpperCase();
-
-  // ✅ 2) valida y setea el tipo para renderizar el modal correcto
   if (t !== "SERVICIO" && t !== "ARTICULO") {
-    alert("La OC no tiene Tipo válido (SERVICIO/ARTICULO). Revisa OrdenCompraCabecera.Tipo.");
+    alert("La OC no tiene Tipo válido (SERVICIO/ARTICULO).");
     return;
   }
 
-  setFactTipo(t);          // 👈 aquí decides qué modal corresponde
-  setShowFacturaForm(true);// 👈 aquí lo abres
-}, [oc.IdOC, oc?.Tipo]);
+  setFactTipo(t);
+
+  // 🔹 NUEVO: si ya tengo datos guardados, voy directo al preview
+  const est = (factEstable || "").trim();
+  const pto = (factPtoEmi || "").trim();
+  const sec = (factSecu || "").trim();
+
+  if (est && pto && sec) {
+    setSending(true);
+    try {
+      const prev = await previewPrefacturaOC(oc.IdOC, {
+        Establecimiento: est,
+        PuntoEmision: pto,
+        Secuencial: sec,
+      });
+
+      if (prev && prev.error) throw new Error(prev.error);
+
+      if (!prev || !prev.encontrado) {
+        alert((prev && prev.mensaje) || "No se encontró el borrador en SAP.");
+        return;
+      }
+
+      setPreviewData(prev);
+      setPreviewOpen(true);
+    } catch (e) {
+      alert("Error en preview: " + (e?.message || e));
+    } finally {
+      setSending(false);
+    }
+    return;
+  }
+
+  setShowFacturaForm(true);
+}, [oc.IdOC, oc?.Tipo, factEstable, factPtoEmi, factSecu]);
 
 
   // Guardar encabezado de pago
@@ -444,54 +532,76 @@ export default function OCEditor({ oc, detalleInicial }) {
 
   // Confirmar y hacer preview en SAP
   const confirmarPrefactura = useCallback(async () => {
-    const est = (factEstable || "").trim();
-    const pto = (factPtoEmi || "").trim();
-    const sec = (factSecu || "").trim();
-    if (!est || !pto || !sec) {
-      alert("Completa Establecimiento, Punto de Emisión y Secuencial.");
+  const est = (factEstable || "").trim();
+  const pto = (factPtoEmi || "").trim();
+  const sec = (factSecu || "").trim();
+
+  if (!est || !pto || !sec) {
+    alert("Completa Establecimiento, Punto de Emisión y Secuencial.");
+    return;
+  }
+
+  setSending(true);
+  try {
+    setShowFacturaForm(false);
+
+    // 🔹 NUEVO: guardar en tabla ANTES del preview
+    await saveFacturaInfoOC(oc.IdOC, {
+      Establecimiento: est,
+      PuntoEmision: pto,
+      Secuencial: sec,
+    });
+
+    const prev = await previewPrefacturaOC(oc.IdOC, {
+      Establecimiento: est,
+      PuntoEmision: pto,
+      Secuencial: sec,
+    });
+
+    if (prev && prev.error) throw new Error(prev.error);
+
+    if (!prev || !prev.encontrado) {
+      alert((prev && prev.mensaje) || "No se encontró el borrador en SAP.");
       return;
     }
 
-    setSending(true);
-    try {
-      setShowFacturaForm(false);
+    setPreviewData(prev);
+    setPreviewOpen(true);
+  } catch (e) {
+    alert("Error en preview: " + (e && e.message ? e.message : String(e)));
+  } finally {
+    setSending(false);
+  }
+}, [factEstable, factPtoEmi, factSecu, oc.IdOC]);
 
-      const prev = await previewPrefacturaOC(oc.IdOC, {
-        Establecimiento: est,
-        PuntoEmision: pto,
-        Secuencial: sec,
-      });
-      if (prev && prev.error) throw new Error(prev.error);
-
-      if (!prev || !prev.encontrado) {
-        alert((prev && prev.mensaje) || "No se encontró el borrador en SAP.");
-        return;
-      }
-
-      setPreviewData(prev);
-      setPreviewOpen(true);
-    } catch (e) {
-      alert("Error en preview: " + (e && e.message ? e.message : String(e)));
-    } finally {
-      setSending(false);
-    }
-  }, [factEstable, factPtoEmi, factSecu, oc.IdOC]);
 
   // Usa el borrador encontrado y marca la OC como PROCESADA
   const handleUseDraft = useCallback(async () => {
-    try {
-      if (estado !== "PROCESADA") {
-        await updateOCState(oc.IdOC, { estado: "PROCESADA" });
-        setEstado("PROCESADA");
-        alert("OC PROCESADA usando el borrador detectado.");
-      }
-    } catch (e) {
-      alert("Se encontró el borrador, pero no pude marcar PROCESADA: " + (e?.message || e));
-    } finally {
-      setPreviewOpen(false);
-      setPreviewData(null);
+  try {
+    // Si aún no está procesada, la marcamos
+    if (estado !== "PROCESADA") {
+      await updateOCState(oc.IdOC, { estado: "PROCESADA" });
+      setEstado("PROCESADA");
     }
-  }, [estado, oc.IdOC]);
+
+    // 🔹 NUEVO: asegurar que quede guardado (por seguridad)
+    if (factEstable && factPtoEmi && factSecu) {
+      await saveFacturaInfoOC(oc.IdOC, {
+        Establecimiento: factEstable,
+        PuntoEmision: factPtoEmi,
+        Secuencial: factSecu,
+      });
+    }
+
+    alert("OC PROCESADA usando el borrador detectado.");
+  } catch (e) {
+    alert("Se encontró el borrador, pero hubo error: " + (e?.message || e));
+  } finally {
+    setPreviewOpen(false);
+    setPreviewData(null);
+  }
+}, [estado, oc.IdOC, factEstable, factPtoEmi, factSecu]);
+
 
   // Cancelar formulario de prefactura
   const cancelarPrefactura = useCallback(() => {
@@ -501,6 +611,57 @@ export default function OCEditor({ oc, detalleInicial }) {
     setFactPtoEmi("");
     setFactSecu("");
   }, []);
+
+  // ✅ NUEVO: abrir modal subir factura (autollenar si tienes previewData)
+  const openUploadFactura = useCallback(() => {
+  setUpEst((factEstable || "").trim());
+  setUpPto((factPtoEmi || "").trim());
+  setUpSec((factSecu || "").trim());
+  setUpFile(null);
+  setShowUploadFactura(true);
+}, [factEstable, factPtoEmi, factSecu]);
+
+
+  // ✅ NUEVO: subir adjunto a SharePoint
+  const subirFactura = useCallback(async () => {
+    if (!oc?.IdOC) return;
+
+    const est = (upEst || "").trim();
+    const pto = (upPto || "").trim();
+    const sec = (upSec || "").trim();
+
+    if (!est || !pto || !sec) {
+      alert("Completa Establecimiento, Punto de Emisión y Secuencial.");
+      return;
+    }
+    if (!upFile) {
+      alert("Selecciona un archivo (PDF/XML).");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const userEmail = session?.user?.email;
+
+      await uploadFacturaAdjuntoOC(
+        oc.IdOC,
+        { Establecimiento: est, PuntoEmision: pto, Secuencial: sec, file: upFile },
+        userEmail
+      );
+
+      alert("Factura subida a SharePoint ✅");
+
+      setShowUploadFactura(false);
+      setUpFile(null);
+
+      const a = await listFacturaAdjuntosOC(oc.IdOC);
+      setAdjuntosFactura(Array.isArray(a) ? a : []);
+    } catch (e) {
+      alert("Error subiendo factura: " + (e?.message || e));
+    } finally {
+      setUploading(false);
+    }
+  }, [oc?.IdOC, upEst, upPto, upSec, upFile, session?.user?.email]);
 
   // Anular OC
   const anularOC = useCallback(async () => {
@@ -594,9 +755,21 @@ export default function OCEditor({ oc, detalleInicial }) {
               <span className={styles.muted}>Edición bloqueada</span>
             )}
 
+            {/* ✅ NUEVO: botón subir factura SOLO si PROCESADA */}
+            {estado === "PROCESADA" && (
+              <button
+                className={styles.primary}
+                onClick={openUploadFactura}
+                title="Subir PDF/XML de la factura a SharePoint"
+              >
+                Subir factura
+              </button>
+            )}
+
             <button className={styles.warn} onClick={anularOC}>
               Anular
             </button>
+
             <button
               className={styles.ok}
               onClick={() => mandarAFacturar("NORMAL")}
@@ -606,7 +779,6 @@ export default function OCEditor({ oc, detalleInicial }) {
             </button>
           </div>
         </div>
-
       </div>
 
       {/* Tabla principal */}
@@ -849,6 +1021,38 @@ export default function OCEditor({ oc, detalleInicial }) {
         </div>
       </div>
 
+      {/* ✅ NUEVO: Adjuntos factura */}
+      <div className={styles.card} style={{ marginTop: 14 }}>
+        <div className={styles.sectionTitle}>Adjuntos de factura</div>
+
+        {!adjuntosFactura?.length ? (
+          <p className={styles.muted}>No hay adjuntos cargados.</p>
+        ) : (
+          <div className={styles.attachList}>
+            {adjuntosFactura.map((a) => (
+              <div key={a.Id} className={styles.attachRow}>
+                <div>
+                  <div className={styles.attachName}>{a.FileName}</div>
+                  <div className={styles.attachMeta}>
+                    {a.CreatedAt ? `Subido: ${a.CreatedAt}` : ""}
+                    {a.CreatedBy ? ` · por ${a.CreatedBy}` : ""}
+                  </div>
+                </div>
+
+                <a
+                  className={styles.ok}
+                  href={downloadFacturaAdjuntoOC(oc.IdOC, a.Id)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Descargar
+                </a>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Mensajes de estado */}
       {!editable && (
         <p className={styles.note}>
@@ -856,10 +1060,10 @@ export default function OCEditor({ oc, detalleInicial }) {
           {estado === "RECHAZADA"
             ? " (rechazada)"
             : enAprobacion
-            ? " (en aprobación)"
-            : ocAprob?.estado === "APROBADA"
-            ? " (aprobada)"
-            : ""}
+              ? " (en aprobación)"
+              : ocAprob?.estado === "APROBADA"
+                ? " (aprobada)"
+                : ""}
           .
         </p>
       )}
@@ -876,6 +1080,73 @@ export default function OCEditor({ oc, detalleInicial }) {
           * Aprobada (nivel {ocAprob.nivel_max}/{ocAprob.nivel_max}). Ya no se puede modificar el detalle; puedes
           Facturar o Anular.
         </p>
+      )}
+
+      {/* ✅ Modal Subir Factura */}
+      {showUploadFactura && (
+        <div className={styles.modalOverlay} role="dialog" aria-modal="true">
+          <div className={styles.modalBox}>
+            <h3 className={styles.modalTitle}>Subir factura (SharePoint)</h3>
+
+            <div className={styles.formGrid}>
+              <label>
+                <span>Establecimiento</span>
+                <input
+                  value={upEst}
+                  onChange={(e) => setUpEst(e.target.value)}
+                  placeholder="001"
+                  maxLength={10}
+                />
+              </label>
+
+              <label>
+                <span>Punto de emisión</span>
+                <input
+                  value={upPto}
+                  onChange={(e) => setUpPto(e.target.value)}
+                  placeholder="002"
+                  maxLength={10}
+                />
+              </label>
+
+              <label className={styles.gridFull}>
+                <span>Secuencial</span>
+                <input
+                  value={upSec}
+                  onChange={(e) => setUpSec(e.target.value)}
+                  placeholder="00001234"
+                  maxLength={20}
+                />
+              </label>
+
+              <label className={styles.gridFull}>
+                <span>Archivo (PDF/XML)</span>
+                <input
+                  type="file"
+                  accept=".pdf,.xml,application/pdf,text/xml,application/xml"
+                  onChange={(e) => setUpFile(e.target.files?.[0] || null)}
+                />
+              </label>
+            </div>
+
+            <div className={styles.modalActions}>
+              <button
+                className={styles.secondary}
+                onClick={() => setShowUploadFactura(false)}
+                disabled={uploading}
+              >
+                Cancelar
+              </button>
+              <button
+                className={styles.primary}
+                onClick={subirFactura}
+                disabled={uploading}
+              >
+                {uploading ? "Subiendo..." : "Subir"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ✅ Modal de datos para facturar (elige por Tipo OC) */}
@@ -939,7 +1210,6 @@ export default function OCEditor({ oc, detalleInicial }) {
                 : "Datos para facturar — ARTÍCULO"}
             </h3>
 
-            {/* 🔥 Por ahora es igual (mismos 3 campos). Si ARTICULO lleva extras, aquí los metes. */}
             <div className={styles.formGrid}>
               <label>
                 <span>Establecimiento</span>
@@ -985,7 +1255,7 @@ export default function OCEditor({ oc, detalleInicial }) {
       {/* ✅ Modal de PREVIEW (archivo aparte) */}
       <FacturaPreviewModal
         open={previewOpen}
-        data={previewData ? { ...previewData, OcId: ocId, Tipo: tipoOC } : null} // opcional: le pasas Tipo
+        data={previewData ? { ...previewData, OcId: ocId, Tipo: tipoOC } : null}
         onClose={() => {
           setPreviewOpen(false);
           setPreviewData(null);
@@ -995,7 +1265,6 @@ export default function OCEditor({ oc, detalleInicial }) {
         rolId={user?.RolId}
         modo="ordenes"
       />
-
     </div>
   );
 }
