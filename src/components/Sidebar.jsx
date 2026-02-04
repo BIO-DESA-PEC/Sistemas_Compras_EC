@@ -11,6 +11,7 @@ import {
   ClipboardList,
   ShieldCheck,
   LogOut,
+  Truck,
 } from "lucide-react";
 import styles from "./sidebar.module.css";
 
@@ -36,6 +37,9 @@ export default function Sidebar({ session, user, collapsed }) {
 
   // ✅ Anticipos: Admin + Compras
   const canSeeAnticipos = isAdmin || isCompras;
+
+  // ✅ PROVEEDORES: SOLO Admin + Compras
+  const canSeeProveedores = isAdmin || isCompras;
 
   const dashboardHref = isData
     ? "/facturas-sap"
@@ -122,6 +126,13 @@ export default function Sidebar({ session, user, collapsed }) {
               <ClipboardList size={18} />
               <span>Pre-órdenes de compra</span>
             </a>
+
+            {canSeeProveedores && (
+              <a href="/proveedores" className={styles.item}>
+                <Truck size={18} />
+                <span>Proveedores</span>
+              </a>
+            )}
 
             {canSeeAnticipos && (
               <a href="/anticipos" className={styles.item}>

@@ -376,3 +376,48 @@ export async function saveFacturaInfoOC(idOC, payload) {
     body: JSON.stringify(payload),
   });
 }
+// ================================
+// PROVEEDORES (SAP) - NUEVO MODULO
+// ================================
+export async function getProveedoresSap({ q = "", top = 50 } = {}) {
+  const url = apiUrl("/api/proveedores-sap", { q, top });
+  return fetchJSON(url, { method: "GET" });
+}
+
+export async function getCondicionesPago() {
+  const url = apiUrl("/api/proveedores/condiciones-pago");
+  return fetchJSON(url, { method: "GET" });
+}
+
+export async function updateProveedorSap(cardcode, payload) {
+  const url = apiUrl(`/api/proveedores-sap/${encodeURIComponent(cardcode)}`);
+  return fetchJSON(url, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getProveedoresSapAll({ q = "" } = {}) {
+  const url = apiUrl("/api/proveedores/all", { q });
+  return fetchJSON(url, { method: "GET" });
+}
+
+export async function getFormasPago() {
+  const url = apiUrl("/api/proveedores/formas-pago");
+  return fetchJSON(url, { method: "GET" });
+}
+
+// ✅ Solicitar cambio (crea PENDING + envía correo a Contabilidad)
+export async function solicitarCambioProveedor(cardcode, payload, requestedBy) {
+  const url = apiUrl(`/api/proveedores-sap/${encodeURIComponent(cardcode)}/solicitar-cambio`);
+  return fetchJSON(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ...payload,
+      requestedBy: requestedBy || null,
+    }),
+  });
+}
+
