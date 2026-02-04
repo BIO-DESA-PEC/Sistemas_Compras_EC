@@ -421,3 +421,17 @@ export async function solicitarCambioProveedor(cardcode, payload, requestedBy) {
   });
 }
 
+export async function createPreOCDirect({ userId, departamentoId, tipo, comentario }) {
+  const base =
+    process.env.NEXT_PUBLIC_BACKEND_URL || "https://back-compras-ec.onrender.com";
+
+  const res = await fetch(`${base}/api/preoc`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId, departamentoId, tipo, comentario }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+  return data;
+}

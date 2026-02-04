@@ -3,6 +3,7 @@ import { getUserByEmail } from "@/app/lib/backend";
 import Link from "next/link";
 import RowActions from "./RowActions";
 import styles from "./preordenes.module.css";
+import CreatePreOCModalButton from "./CreatePreOCModalButton";
 
 const PAGE_SIZE_DEFAULT = 15;
 
@@ -114,28 +115,32 @@ export default async function PreOCListPage({ searchParams }) {
 
       {/* BUSCADOR */}
       <form className={styles.searchBar} method="get">
-        <input
-          name="q"
-          className={styles.searchInput}
-          placeholder="Buscar por #PreOC o #Solicitud…"
-          defaultValue={q}
-        />
+  <input
+    name="q"
+    className={styles.searchInput}
+    placeholder="Buscar por #PreOC o #Solicitud…"
+    defaultValue={q}
+  />
 
-        <input type="hidden" name="pageSize" value={pageSize} />
+  <input type="hidden" name="pageSize" value={pageSize} />
 
-        <button className={styles.primary} type="submit">
-          Buscar
-        </button>
+  <button className={styles.primary} type="submit">
+    Buscar
+  </button>
 
-        {q && (
-          <Link
-            className={styles.secondary}
-            href="/preordenes"
-          >
-            Limpiar
-          </Link>
-        )}
-      </form>
+  {/* ✅ NUEVO: modal crear pre-orden */}
+  <CreatePreOCModalButton
+    userId={userId}
+    departamentoId={user?.DepartamentoId ?? user?.DepartamentoID ?? null}
+  />
+
+  {q && (
+    <Link className={styles.secondary} href="/preordenes">
+      Limpiar
+    </Link>
+  )}
+</form>
+
 
       {items.length === 0 ? (
         <div className={styles.empty}>
