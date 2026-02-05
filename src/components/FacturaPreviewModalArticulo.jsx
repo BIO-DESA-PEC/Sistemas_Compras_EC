@@ -30,7 +30,7 @@ function titleFromOpts(value, opts = []) {
 function titleFromDim(code, list = []) {
   const v = t(code);
   if (!v) return '';
-  const found = list.find(o => String(o.code) === v);
+  const found = (list || []).find(o => String(o.code) === v);
   return found ? `${found.code} — ${found.name}` : v;
 }
 
@@ -60,7 +60,35 @@ export default function FacturaPreviewModalArticulo({
   // ========= DIMENSIONES =========
   const [dLinea,  setDLinea]  = useState([]);
   const [dRegion, setDRegion] = useState([]);
-  const [dDepto,  setDDepto]  = useState([]);
+
+  // ✅ cache deptos por línea (key = "1".."5")
+  const [deptosCache, setDeptosCache] = useState({});
+
+  // ✅ trae deptos por línea y guarda en cache
+  async function getDeptosByLinea(lineaCode) {
+    const k = String(lineaCode || '').trim();
+    if (!k) return [];
+
+    // cache hit
+    if (deptosCache[k]) return deptosCache[k];
+
+    const res = await fetch(`${baseUrl}/api/dimensiones/departamento?linea=${encodeURIComponent(k)}`);
+    const j = await res.json();
+    const arr = Array.isArray(j) ? j : [];
+
+    setDeptosCache(prev => ({ ...prev, [k]: arr }));
+    return arr;
+  }
+
+  // ✅ helpers para que NO salga "not defined"
+  function deptoListForRow(lineaCode) {
+    const k = String(lineaCode || '').trim();
+    return k && deptosCache[k] ? deptosCache[k] : [];
+  }
+  function deptoOptsForRow(lineaCode) {
+    const list = deptoListForRow(lineaCode);
+    return (list || []).map(o => ({ value: o.code, label: `${o.code} — ${o.name}` }));
+  }
 
   // ========= CABECERA =========
   const buildCabecera = (d) => {
@@ -122,7 +150,7 @@ export default function FacturaPreviewModalArticulo({
     }))
   );
 
-  // ========= BLOQUEO (si lo quieres igual que servicio) =========
+  // ========= BLOQUEO =========
   const [finalizado, setFinalizado] = useState(false);
   const readOnlyTotal = (modo === "facturas_sap") && finalizado;
 
@@ -156,35 +184,47 @@ export default function FacturaPreviewModalArticulo({
       IdSustentoTributario: ln.U_SYP_CODIDTRD || (data?.Cabecera?.IdSustentoTributario ?? '01'),
     })));
 
-    // inputs de búsqueda (si el backend no te los manda, aquí los pones vacíos)
     setEst(String(data?.Cabecera?.Serie || ''));
     setPto(String(data?.Cabecera?.PtoEmi || ''));
     setSec(String(data?.Cabecera?.Secuencial || ''));
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, data?.DocEntry]);
 
-  // ========= cargar dimensiones =========
+  // ========= cargar dimensiones (✅ depto global ya no se carga) =========
   useEffect(() => {
     if (!open) return;
 
     (async () => {
       try {
-        const [a, b, c] = await Promise.all([
+        const [a, b] = await Promise.all([
           fetch(`${baseUrl}/api/dimensiones/linea`).then(r => r.json()),
           fetch(`${baseUrl}/api/dimensiones/region`).then(r => r.json()),
-          fetch(`${baseUrl}/api/dimensiones/departamento`).then(r => r.json()),
         ]);
-        setDLinea(a || []); setDRegion(b || []); setDDepto(c || []);
+        setDLinea(a || []);
+        setDRegion(b || []);
       } catch (e) {
         console.error(e);
       }
     })();
   }, [open, baseUrl]);
 
+  // ✅ precargar deptos para líneas existentes (por si el draft ya viene con línea)
+  useEffect(() => {
+    if (!open) return;
+    (async () => {
+      const unicas = Array.from(
+        new Set((rows || []).map(r => String(r.CostingCode || '').trim()).filter(Boolean))
+      );
+      for (const l of unicas) {
+        try { await getDeptosByLinea(l); } catch {}
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
   const dimOptsLinea = useMemo(() => (dLinea || []).map(o => ({ value: o.code, label: `${o.code} — ${o.name}` })), [dLinea]);
   const dimOptsRegion = useMemo(() => (dRegion || []).map(o => ({ value: o.code, label: `${o.code} — ${o.name}` })), [dRegion]);
-  const dimOptsDepto  = useMemo(() => (dDepto  || []).map(o => ({ value: o.code, label: `${o.code} — ${o.name}` })), [dDepto]);
 
   const ivaOpts = useMemo(() => IVA_OPTS.map(o => ({ value: o.value, label: o.label })), []);
   const sustentoOpts = useMemo(() => SUSTENTO_OPTS.map(o => ({ value: o.value, label: o.label })), []);
@@ -246,6 +286,14 @@ export default function FacturaPreviewModalArticulo({
         IdSustentoTributario: ln.U_SYP_CODIDTRD || (j?.Cabecera?.IdSustentoTributario ?? '01'),
       })));
 
+      // ✅ precargar deptos para líneas del draft encontrado
+      const unicas = Array.from(
+        new Set((j.Lineas || []).map(r => String(r.CostingCode || '').trim()).filter(Boolean))
+      );
+      for (const l of unicas) {
+        try { await getDeptosByLinea(l); } catch {}
+      }
+
       setMsg({ type: 'ok', text: `Borrador encontrado: DocEntry #${j.DocEntry}` });
     } catch (e) {
       setMsg({ type: 'err', text: String(e?.message || e) });
@@ -261,12 +309,24 @@ export default function FacturaPreviewModalArticulo({
       const docEntry = draft?.DocEntry;
       if (!docEntry) throw new Error('Primero busca el borrador (DocEntry).');
 
-      // validaciones mínimas para ARTÍCULO
+      // ✅ validaciones mínimas para ARTÍCULO
       for (let i = 0; i < rows.length; i++) {
         const it = String(rows[i]?.ItemCode || '').trim();
         if (!it) throw new Error(`Línea ${i + 1}: falta ItemCode`);
         const qty = Number(rows[i]?.Cantidad ?? 0);
         if (!qty || qty <= 0) throw new Error(`Línea ${i + 1}: Cantidad debe ser mayor a 0`);
+      }
+
+      // ✅ OBLIGATORIOS: Línea / Región / Departamento
+      for (let i = 0; i < rows.length; i++) {
+        const ln = rows[i];
+        const linea = String(ln?.CostingCode || '').trim();
+        const region = String(ln?.CostingCode2 || '').trim();
+        const depto = String(ln?.CostingCode3 || '').trim();
+
+        if (!linea) throw new Error(`Línea ${i + 1}: falta Línea`);
+        if (!region) throw new Error(`Línea ${i + 1}: falta Región`);
+        if (!depto) throw new Error(`Línea ${i + 1}: falta Departamento`);
       }
 
       const payload = {
@@ -375,6 +435,8 @@ export default function FacturaPreviewModalArticulo({
                   {sending ? 'Buscando…' : 'Buscar borrador'}
                 </button>
               </div>
+
+              {msg && <div className={msg.type === 'ok' ? styles.alertOk : styles.alertErr}>{msg.text}</div>}
             </div>
           )}
 
@@ -434,9 +496,9 @@ export default function FacturaPreviewModalArticulo({
                     <div>Precio</div>
                     <div>Desc%</div>
                     <div>IVA</div>
-                    <div>Línea</div>
-                    <div>Región</div>
-                    <div>Departamento</div>
+                    <div>Línea*</div>
+                    <div>Región*</div>
+                    <div>Departamento*</div>
                     <div>Sustento</div>
                     <div className={styles.right}>Total</div>
                   </div>
@@ -521,10 +583,14 @@ export default function FacturaPreviewModalArticulo({
                           />
                         </div>
 
+                        {/* ✅ LÍNEA: al cambiar, limpia depto y precarga deptos */}
                         <div>
                           <SearchSelect
                             value={ln.CostingCode}
-                            onChange={(v) => updateRow(i, { CostingCode: v })}
+                            onChange={async (v) => {
+                              updateRow(i, { CostingCode: v, CostingCode3: '' });
+                              try { await getDeptosByLinea(v); } catch (e) { console.error(e); }
+                            }}
                             options={dimOptsLinea}
                             placeholder="Línea"
                             disabled={readOnlyTotal}
@@ -549,27 +615,29 @@ export default function FacturaPreviewModalArticulo({
                           />
                         </div>
 
+                        {/* ✅ DEPARTAMENTO depende de Línea */}
                         <div>
                           <SearchSelect
                             value={ln.CostingCode3}
                             onChange={(v) => updateRow(i, { CostingCode3: v })}
-                            options={dimOptsDepto}
-                            placeholder="Departamento"
-                            disabled={readOnlyTotal}
-                            title={titleFromDim(ln.CostingCode3, dDepto)}
+                            options={deptoOptsForRow(ln.CostingCode)}
+                            placeholder={ln.CostingCode ? "Departamento" : "Primero seleccione línea"}
+                            disabled={readOnlyTotal || !ln.CostingCode}
+                            title={titleFromDim(ln.CostingCode3, deptoListForRow(ln.CostingCode))}
                             mode="dialog"
                             dialogTitle="Seleccionar departamento"
                             inputClassName={styles.ssInput}
                           />
                         </div>
 
+                        {/* ✅ SUSTENTO (BLOQUEADO si ya está lleno) */}
                         <div>
                           <SearchSelect
                             value={ln.IdSustentoTributario}
                             onChange={(v) => updateRow(i, { IdSustentoTributario: v })}
                             options={sustentoOpts}
                             placeholder="Sustento"
-                            disabled={readOnlyTotal}
+                            disabled={readOnlyTotal || !!t(ln.IdSustentoTributario)}
                             title={titleFromOpts(ln.IdSustentoTributario, SUSTENTO_OPTS)}
                             mode="dialog"
                             dialogTitle="Seleccionar sustento"

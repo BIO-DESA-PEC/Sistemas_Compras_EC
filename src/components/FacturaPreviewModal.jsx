@@ -50,6 +50,9 @@ export default function FacturaPreviewModal({
   const [sending, setSending] = useState(false);
   const [msg, setMsg] = useState(null);
 
+  // ✅ cache deptos por línea (key = línea)
+  const [deptosCache, setDeptosCache] = useState({});
+
   const rol = String(rolNombre || "").toUpperCase();
   const isAdmin = Number(rolId) === 1 || rol === "ADMINISTRADOR";
   const isData  = Number(rolId) === 5 || rol === "DATA";
@@ -58,8 +61,39 @@ export default function FacturaPreviewModal({
   /* ===== DIMENSIONES ===== */
   const [dLinea,  setDLinea]  = useState([]);
   const [dRegion, setDRegion] = useState([]);
-  const [dDepto,  setDDepto]  = useState([]);
+
   const [correoAutoEnviado, setCorreoAutoEnviado] = useState(false);
+
+  // ✅ trae deptos por línea y guarda en cache
+  async function getDeptosByLinea(lineaCode) {
+    const k = String(lineaCode || '').trim();
+    if (!k) return [];
+
+    // cache hit
+    if (deptosCache[k]) return deptosCache[k];
+
+    const base =
+      process.env.NEXT_PUBLIC_BACKEND_URL || 'https://back-compras-ec.onrender.com';
+
+    const res = await fetch(
+      `${base}/api/dimensiones/departamento?linea=${encodeURIComponent(k)}`
+    );
+    const j = await res.json();
+    const arr = Array.isArray(j) ? j : [];
+
+    setDeptosCache(prev => ({ ...prev, [k]: arr }));
+    return arr;
+  }
+
+  // ✅ helpers (AFUERA de getDeptosByLinea) para que NO diga "not defined"
+  function deptoListForRow(lineaCode) {
+    const k = String(lineaCode || '').trim();
+    return k && deptosCache[k] ? deptosCache[k] : [];
+  }
+  function deptoOptsForRow(lineaCode) {
+    const list = deptoListForRow(lineaCode);
+    return (list || []).map(o => ({ value: o.code, label: `${o.code} — ${o.name}` }));
+  }
 
   /* ===== GASTOS ===== */
   const [gastos, setGastos] = useState([]);
@@ -169,25 +203,37 @@ export default function FacturaPreviewModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, data?.TipoOC, correoAutoEnviado, isLock, readOnlyTotal]);
 
-  // 2) Cargar dimensiones
+  // 2) Cargar dimensiones (✅ quitamos depto global, ahora es por línea)
   useEffect(() => {
     if (!open) return;
     const base = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://back-compras-ec.onrender.com';
 
     (async () => {
       try {
-        const [a, b, c] = await Promise.all([
+        const [a, b] = await Promise.all([
           fetch(`${base}/api/dimensiones/linea`).then(r => r.json()),
           fetch(`${base}/api/dimensiones/region`).then(r => r.json()),
-          fetch(`${base}/api/dimensiones/departamento`).then(r => r.json()),
         ]);
         setDLinea(a || []);
         setDRegion(b || []);
-        setDDepto(c || []);
       } catch (e) {
         console.error(e);
       }
     })();
+  }, [open]);
+
+  // ✅ opcional: precargar deptos para líneas ya existentes al abrir
+  useEffect(() => {
+    if (!open) return;
+    (async () => {
+      const unicas = Array.from(
+        new Set((rows || []).map(r => String(r.CostingCode || '').trim()).filter(Boolean))
+      );
+      for (const l of unicas) {
+        try { await getDeptosByLinea(l); } catch {}
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   // 3) Cargar gastos
@@ -305,10 +351,6 @@ export default function FacturaPreviewModal({
     () => (dRegion || []).map(o => ({ value: o.code, label: `${o.code} — ${o.name}` })),
     [dRegion]
   );
-  const dimOptsDepto = useMemo(
-    () => (dDepto || []).map(o => ({ value: o.code, label: `${o.code} — ${o.name}` })),
-    [dDepto]
-  );
   const ivaOpts = useMemo(
     () => IVA_OPTS.map(o => ({ value: o.value, label: o.label })),
     []
@@ -374,6 +416,18 @@ export default function FacturaPreviewModal({
           const qty = Number(rows[i]?.Cantidad ?? 0);
           if (!qty || qty <= 0) throw new Error(`Línea ${i + 1}: Cantidad debe ser mayor a 0`);
         }
+      }
+
+      // ✅ OBLIGATORIOS: Línea / Región / Departamento (para cada línea)
+      for (let i = 0; i < rows.length; i++) {
+        const ln = rows[i];
+        const linea = String(ln?.CostingCode || "").trim();
+        const region = String(ln?.CostingCode2 || "").trim();
+        const depto = String(ln?.CostingCode3 || "").trim();
+
+        if (!linea) throw new Error(`Línea ${i + 1}: falta Línea`);
+        if (!region) throw new Error(`Línea ${i + 1}: falta Región`);
+        if (!depto) throw new Error(`Línea ${i + 1}: falta Departamento`);
       }
 
       const payload = {
@@ -637,9 +691,9 @@ export default function FacturaPreviewModal({
                 <div>Precio</div>
                 <div>Desc%</div>
                 <div>IVA</div>
-                <div>Línea</div>
-                <div>Región</div>
-                <div>Departamento</div>
+                <div>Línea*</div>
+                <div>Región*</div>
+                <div>Departamento*</div>
                 <div>Sustento</div>
                 {clase === "SERVICIO" && <div>Gasto</div>}
                 <div className={styles.right}>Total</div>
@@ -747,121 +801,115 @@ export default function FacturaPreviewModal({
                         title={t(ln.Descuento)}
                       />
                     </div>
-{/* ✅ IVA (buscable igual, aunque tiene pocos) */}
-<div>
-  <SearchSelect
-    value={ln.TaxCode}
-    onChange={(v) => updateRow(i, { TaxCode: v })}
-    options={ivaOpts}
-    placeholder="IVA"
-    disabled={isLock || readOnlyTotal}
-    title={titleFromOpts(ln.TaxCode, IVA_OPTS)}
-    maxHeight={220}
-    searchPlaceholder="Buscar IVA..."
-    clearable={false}
-    /* ✅ look & modal */
-    mode="dialog"
-    dialogTitle="Seleccionar IVA"
-    inputClassName={styles.ssInput}
-  />
-</div>
 
-{/* ✅ LÍNEA (D1) */}
-<div>
-  <SearchSelect
-    value={ln.CostingCode}
-    onChange={(v) => updateRow(i, { CostingCode: v })}
-    options={dimOptsLinea}
-    placeholder="Seleccione línea"
-    disabled={isLock || readOnlyTotal}
-    title={titleFromDim(ln.CostingCode, dLinea)}
-    searchPlaceholder="Buscar línea..."
-    maxHeight={320}
-    /* ✅ look & modal */
-    mode="dialog"
-    dialogTitle="Seleccionar línea"
-    inputClassName={styles.ssInput}
-  />
-</div>
+                    {/* ✅ IVA */}
+                    <div>
+                      <SearchSelect
+                        value={ln.TaxCode}
+                        onChange={(v) => updateRow(i, { TaxCode: v })}
+                        options={ivaOpts}
+                        placeholder="IVA"
+                        disabled={isLock || readOnlyTotal}
+                        title={titleFromOpts(ln.TaxCode, IVA_OPTS)}
+                        maxHeight={220}
+                        searchPlaceholder="Buscar IVA..."
+                        clearable={false}
+                        mode="dialog"
+                        dialogTitle="Seleccionar IVA"
+                        inputClassName={styles.ssInput}
+                      />
+                    </div>
 
-{/* ✅ REGIÓN (D2) */}
-<div>
-  <SearchSelect
-    value={ln.CostingCode2}
-    onChange={(v) => updateRow(i, { CostingCode2: v })}
-    options={dimOptsRegion}
-    placeholder="Seleccione región"
-    disabled={isLock || readOnlyTotal}
-    title={titleFromDim(ln.CostingCode2, dRegion)}
-    searchPlaceholder="Buscar región..."
-    maxHeight={320}
-    /* ✅ look & modal */
-    mode="dialog"
-    dialogTitle="Seleccionar región"
-    inputClassName={styles.ssInput}
-  />
-</div>
+                    {/* ✅ LÍNEA (D1) */}
+                    <div>
+                      <SearchSelect
+                        value={ln.CostingCode}
+                        onChange={async (v) => {
+                          updateRow(i, { CostingCode: v, CostingCode3: '' });
+                          try { await getDeptosByLinea(v); } catch (e) { console.error(e); }
+                        }}
+                        options={dimOptsLinea}
+                        placeholder="Seleccione línea"
+                        disabled={isLock || readOnlyTotal}
+                        title={titleFromDim(ln.CostingCode, dLinea)}
+                        searchPlaceholder="Buscar línea..."
+                        maxHeight={320}
+                        mode="dialog"
+                        dialogTitle="Seleccionar línea"
+                        inputClassName={styles.ssInput}
+                      />
+                    </div>
 
-{/* ✅ DEPARTAMENTO (D3) */}
-<div>
-  <SearchSelect
-    value={ln.CostingCode3}
-    onChange={(v) => updateRow(i, { CostingCode3: v })}
-    options={dimOptsDepto}
-    placeholder="Seleccione departamento"
-    disabled={isLock || readOnlyTotal}
-    title={titleFromDim(ln.CostingCode3, dDepto)}
-    searchPlaceholder="Buscar departamento..."
-    maxHeight={320}
-    /* ✅ look & modal */
-    mode="dialog"
-    dialogTitle="Seleccionar departamento"
-    inputClassName={styles.ssInput}
-  />
-</div>
+                    {/* ✅ REGIÓN (D2) */}
+                    <div>
+                      <SearchSelect
+                        value={ln.CostingCode2}
+                        onChange={(v) => updateRow(i, { CostingCode2: v })}
+                        options={dimOptsRegion}
+                        placeholder="Seleccione región"
+                        disabled={isLock || readOnlyTotal}
+                        title={titleFromDim(ln.CostingCode2, dRegion)}
+                        searchPlaceholder="Buscar región..."
+                        maxHeight={320}
+                        mode="dialog"
+                        dialogTitle="Seleccionar región"
+                        inputClassName={styles.ssInput}
+                      />
+                    </div>
 
-{/* ✅ SUSTENTO */}
-<div>
-  <SearchSelect
-    value={ln.IdSustentoTributario}
-    onChange={(v) => updateRow(i, { IdSustentoTributario: v })}
-    options={sustentoOpts}
-    placeholder="Sustento"
-    disabled={isLock || readOnlyTotal}
-    title={titleFromOpts(ln.IdSustentoTributario, SUSTENTO_OPTS)}
-    maxHeight={220}
-    searchPlaceholder="Buscar sustento..."
-    clearable={false}
-    /* ✅ look & modal */
-    mode="dialog"
-    dialogTitle="Seleccionar sustento"
-    inputClassName={styles.ssInput}
-  />
-</div>
+                    {/* ✅ DEPARTAMENTO (D3) */}
+                    <div>
+                      <SearchSelect
+                        value={ln.CostingCode3}
+                        onChange={(v) => updateRow(i, { CostingCode3: v })}
+                        options={deptoOptsForRow(ln.CostingCode)}
+                        placeholder={ln.CostingCode ? "Seleccione departamento" : "Primero seleccione línea"}
+                        disabled={isLock || readOnlyTotal || !ln.CostingCode}
+                        title={titleFromDim(ln.CostingCode3, deptoListForRow(ln.CostingCode))}
+                        searchPlaceholder="Buscar departamento..."
+                        maxHeight={320}
+                        mode="dialog"
+                        dialogTitle="Seleccionar departamento"
+                        inputClassName={styles.ssInput}
+                      />
+                    </div>
 
-{/* ✅ GASTO */}
-{clase === "SERVICIO" && (
-  <div>
-    <SearchSelect
-      value={ln.ConceptoGasto}
-      onChange={(v) => handleSelectGasto(i, v)}
-      options={gastoOpts}
-      placeholder={gastos.length ? "Seleccione concepto de gasto" : "Cargando..."}
-      disabled={
-        !gastos.length ||
-        readOnlyTotal ||
-        (!isLock && !canEditGasto)
-      }
-      title={gastoTitle}
-      maxHeight={320}
-      searchPlaceholder="Buscar gasto..."
-      /* ✅ look & modal */
-      mode="dialog"
-      dialogTitle="Seleccionar gasto"
-      inputClassName={styles.ssInput}
-    />
-  </div>
-)}
+                    {/* ✅ SUSTENTO (BLOQUEADO si ya está lleno) */}
+                    <div>
+                      <SearchSelect
+                        value={ln.IdSustentoTributario}
+                        onChange={(v) => updateRow(i, { IdSustentoTributario: v })}
+                        options={sustentoOpts}
+                        placeholder="Sustento"
+                        disabled={isLock || readOnlyTotal || !!t(ln.IdSustentoTributario)}
+                        title={titleFromOpts(ln.IdSustentoTributario, SUSTENTO_OPTS)}
+                        maxHeight={220}
+                        searchPlaceholder="Buscar sustento..."
+                        clearable={false}
+                        mode="dialog"
+                        dialogTitle="Seleccionar sustento"
+                        inputClassName={styles.ssInput}
+                      />
+                    </div>
+
+                    {/* ✅ GASTO */}
+                    {clase === "SERVICIO" && (
+                      <div>
+                        <SearchSelect
+                          value={ln.ConceptoGasto}
+                          onChange={(v) => handleSelectGasto(i, v)}
+                          options={gastoOpts}
+                          placeholder={gastos.length ? "Seleccione concepto de gasto" : "Cargando..."}
+                          disabled={!gastos.length || readOnlyTotal || (!isLock && !canEditGasto)}
+                          title={gastoTitle}
+                          maxHeight={320}
+                          searchPlaceholder="Buscar gasto..."
+                          mode="dialog"
+                          dialogTitle="Seleccionar gasto"
+                          inputClassName={styles.ssInput}
+                        />
+                      </div>
+                    )}
 
                     <div className={styles.num} title={total.toFixed(2)}>{total.toFixed(2)}</div>
 
