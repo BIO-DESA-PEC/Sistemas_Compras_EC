@@ -49,38 +49,33 @@ export default function FacturaPreviewModalArticulo({
   const [sending, setSending] = useState(false);
   const [msg, setMsg] = useState(null);
 
-  // ========= Paso 1: inputs para buscar draft =========
+  // Paso 1
   const [est, setEst] = useState('');
   const [pto, setPto] = useState('');
   const [sec, setSec] = useState('');
 
-  // ========= Data real del draft (luego de buscar) =========
+  // Draft real
   const [draft, setDraft] = useState(data || null);
 
-  // ========= DIMENSIONES =========
+  // Dimensiones
   const [dLinea,  setDLinea]  = useState([]);
   const [dRegion, setDRegion] = useState([]);
 
-  // ✅ cache deptos por línea (key = "1".."5")
+  // cache deptos por linea
   const [deptosCache, setDeptosCache] = useState({});
 
-  // ✅ trae deptos por línea y guarda en cache
   async function getDeptosByLinea(lineaCode) {
     const k = String(lineaCode || '').trim();
     if (!k) return [];
-
-    // cache hit
     if (deptosCache[k]) return deptosCache[k];
 
     const res = await fetch(`${baseUrl}/api/dimensiones/departamento?linea=${encodeURIComponent(k)}`);
     const j = await res.json();
     const arr = Array.isArray(j) ? j : [];
-
     setDeptosCache(prev => ({ ...prev, [k]: arr }));
     return arr;
   }
 
-  // ✅ helpers para que NO salga "not defined"
   function deptoListForRow(lineaCode) {
     const k = String(lineaCode || '').trim();
     return k && deptosCache[k] ? deptosCache[k] : [];
@@ -90,7 +85,6 @@ export default function FacturaPreviewModalArticulo({
     return (list || []).map(o => ({ value: o.code, label: `${o.code} — ${o.name}` }));
   }
 
-  // ========= CABECERA =========
   const buildCabecera = (d) => {
     const c = d?.Cabecera || {};
     const s = (v) => (v ?? '').toString();
@@ -132,7 +126,6 @@ export default function FacturaPreviewModalArticulo({
 
   const [cabecera, setCabecera] = useState(() => buildCabecera(draft));
 
-  // ========= LINEAS =========
   const [rows, setRows] = useState(() =>
     ((draft?.Lineas || [])).map((ln) => ({
       ItemCode: ln.ItemCode || '',
@@ -150,7 +143,6 @@ export default function FacturaPreviewModalArticulo({
     }))
   );
 
-  // ========= BLOQUEO =========
   const [finalizado, setFinalizado] = useState(false);
   const readOnlyTotal = (modo === "facturas_sap") && finalizado;
 
@@ -158,12 +150,12 @@ export default function FacturaPreviewModalArticulo({
     if (readOnlyTotal) return;
     setCabecera(p => ({ ...p, [k]: v }));
   };
+
   const updateRow = (ix, patch) => {
     if (readOnlyTotal) return;
     setRows(prev => prev.map((r, i) => (i === ix ? { ...r, ...patch } : r)));
   };
 
-  // ========= cuando se abre: reset + precargar inputs =========
   useEffect(() => {
     if (!open) return;
     setMsg(null);
@@ -191,10 +183,8 @@ export default function FacturaPreviewModalArticulo({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, data?.DocEntry]);
 
-  // ========= cargar dimensiones (✅ depto global ya no se carga) =========
   useEffect(() => {
     if (!open) return;
-
     (async () => {
       try {
         const [a, b] = await Promise.all([
@@ -209,7 +199,6 @@ export default function FacturaPreviewModalArticulo({
     })();
   }, [open, baseUrl]);
 
-  // ✅ precargar deptos para líneas existentes (por si el draft ya viene con línea)
   useEffect(() => {
     if (!open) return;
     (async () => {
@@ -229,7 +218,6 @@ export default function FacturaPreviewModalArticulo({
   const ivaOpts = useMemo(() => IVA_OPTS.map(o => ({ value: o.value, label: o.label })), []);
   const sustentoOpts = useMemo(() => SUSTENTO_OPTS.map(o => ({ value: o.value, label: o.label })), []);
 
-  // ========= Totales =========
   const resumen = useMemo(() => {
     let sub = 0, ivaBase = 0;
     for (const r of rows) {
@@ -262,6 +250,7 @@ export default function FacturaPreviewModalArticulo({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
+
       const j = await res.json();
       if (!res.ok) throw new Error(j?.error || 'No se pudo buscar el borrador');
 
@@ -270,7 +259,6 @@ export default function FacturaPreviewModalArticulo({
         return;
       }
 
-      // ya tienes draft completo (DocEntry + Cabecera + Lineas + TipoOC)
       setDraft(j);
       setCabecera(buildCabecera(j));
       setRows((j.Lineas || []).map((ln) => ({
@@ -286,7 +274,6 @@ export default function FacturaPreviewModalArticulo({
         IdSustentoTributario: ln.U_SYP_CODIDTRD || (j?.Cabecera?.IdSustentoTributario ?? '01'),
       })));
 
-      // ✅ precargar deptos para líneas del draft encontrado
       const unicas = Array.from(
         new Set((j.Lineas || []).map(r => String(r.CostingCode || '').trim()).filter(Boolean))
       );
@@ -309,7 +296,6 @@ export default function FacturaPreviewModalArticulo({
       const docEntry = draft?.DocEntry;
       if (!docEntry) throw new Error('Primero busca el borrador (DocEntry).');
 
-      // ✅ validaciones mínimas para ARTÍCULO
       for (let i = 0; i < rows.length; i++) {
         const it = String(rows[i]?.ItemCode || '').trim();
         if (!it) throw new Error(`Línea ${i + 1}: falta ItemCode`);
@@ -317,7 +303,6 @@ export default function FacturaPreviewModalArticulo({
         if (!qty || qty <= 0) throw new Error(`Línea ${i + 1}: Cantidad debe ser mayor a 0`);
       }
 
-      // ✅ OBLIGATORIOS: Línea / Región / Departamento
       for (let i = 0; i < rows.length; i++) {
         const ln = rows[i];
         const linea = String(ln?.CostingCode || '').trim();
@@ -377,9 +362,8 @@ export default function FacturaPreviewModalArticulo({
       setMsg({ type: 'ok', text: 'Borrador ARTÍCULO actualizado en SAP.' });
       onUse?.({ clase: 'ARTICULO', draftUpdated: true, docEntry });
 
-      if (modo === 'facturas_sap') {
-        setFinalizado(true);
-      }
+      if (modo === 'facturas_sap') setFinalizado(true);
+
     } catch (e) {
       setMsg({ type: 'err', text: String(e?.message || e) });
     } finally {
@@ -394,7 +378,7 @@ export default function FacturaPreviewModalArticulo({
   return (
     <div className={styles.modalOverlay} role="dialog" aria-modal="true">
       <div className={styles.modalBox}>
-        {/* Header */}
+
         <div className={styles.modalHeader}>
           <div className={styles.titleRow}>
             <h3 className={styles.modalTitle}>
@@ -412,9 +396,7 @@ export default function FacturaPreviewModalArticulo({
           </div>
         </div>
 
-        {/* Contenido */}
         <div className={styles.modalContent}>
-          {/* Paso 1: buscar */}
           {!hasDraft && (
             <div className={styles.form2}>
               <label className={styles.field}>
@@ -440,7 +422,6 @@ export default function FacturaPreviewModalArticulo({
             </div>
           )}
 
-          {/* Paso 2: mostrar draft */}
           {hasDraft && (
             <>
               <div className={styles.form2}>
@@ -486,170 +467,172 @@ export default function FacturaPreviewModalArticulo({
                 </label>
               </div>
 
+              {/* ✅ TABLA PRO (mismo fix) */}
               <div className={styles.tableCard}>
                 <div className={styles.tscroll}>
-                  <div className={`${styles.trow} ${styles.thead}`}>
-                    <div className={styles.idx}>#</div>
-                    <div>Código artículo</div>
-                    <div>Descripción</div>
-                    <div>Cant.</div>
-                    <div>Precio</div>
-                    <div>Desc%</div>
-                    <div>IVA</div>
-                    <div>Línea*</div>
-                    <div>Región*</div>
-                    <div>Departamento*</div>
-                    <div>Sustento</div>
-                    <div className={styles.right}>Total</div>
+                  <div className={styles.tableGrid}>
+
+                    <div className={styles.theadRow}>
+                      <div className={`${styles.idx} ${styles.stickyHead}`}>#</div>
+                      <div>Código artículo</div>
+                      <div>Descripción</div>
+                      <div>Cant.</div>
+                      <div>Precio</div>
+                      <div>Desc%</div>
+                      <div>IVA</div>
+                      <div>Línea*</div>
+                      <div>Región*</div>
+                      <div>Departamento*</div>
+                      <div>Sustento</div>
+                      <div className={styles.right}>Total</div>
+                    </div>
+
+                    {rows.map((ln, i) => {
+                      const base = Math.max(0, n2(ln.Cantidad) * n2(ln.Precio));
+                      const disc = base * (n2(ln.Descuento) / 100);
+                      const total = Math.max(0, base - disc);
+
+                      return (
+                        <div className={styles.trowArticulo} key={i}>
+                          <div className={`${styles.idx} ${styles.sticky}`}>{i + 1}</div>
+
+                          <div>
+                            <input
+                              value={ln.ItemCode}
+                              onChange={e => updateRow(i, { ItemCode: e.target.value })}
+                              disabled={readOnlyTotal}
+                              placeholder="AR-7200SR"
+                              title={t(ln.ItemCode)}
+                            />
+                          </div>
+
+                          <div>
+                            <input
+                              value={ln.Descripcion}
+                              onChange={e => updateRow(i, { Descripcion: e.target.value })}
+                              disabled={readOnlyTotal}
+                              placeholder="Descripción del artículo"
+                              title={t(ln.Descripcion)}
+                            />
+                          </div>
+
+                          <div>
+                            <input
+                              type="number"
+                              min={1}
+                              step="1"
+                              value={ln.Cantidad ?? 1}
+                              onChange={(e) => {
+                                const v = Number(e.target.value);
+                                updateRow(i, { Cantidad: Number.isFinite(v) ? Math.max(1, v) : 1 });
+                              }}
+                              disabled={readOnlyTotal}
+                            />
+                          </div>
+
+                          <div>
+                            <input
+                              type="number"
+                              step="0.01"
+                              className={styles.numInp}
+                              value={ln.Precio}
+                              onChange={e => updateRow(i, { Precio: e.target.value })}
+                              disabled={readOnlyTotal}
+                            />
+                          </div>
+
+                          <div>
+                            <input
+                              type="number"
+                              step="0.01"
+                              className={styles.numInp}
+                              value={ln.Descuento}
+                              onChange={e => updateRow(i, { Descuento: e.target.value })}
+                              disabled={readOnlyTotal}
+                            />
+                          </div>
+
+                          <div>
+                            <SearchSelect
+                              value={ln.TaxCode}
+                              onChange={(v) => updateRow(i, { TaxCode: v })}
+                              options={ivaOpts}
+                              placeholder="IVA"
+                              disabled={readOnlyTotal}
+                              title={titleFromOpts(ln.TaxCode, IVA_OPTS)}
+                              mode="dialog"
+                              dialogTitle="Seleccionar IVA"
+                              inputClassName={styles.ssInput}
+                              clearable={false}
+                            />
+                          </div>
+
+                          <div>
+                            <SearchSelect
+                              value={ln.CostingCode}
+                              onChange={async (v) => {
+                                updateRow(i, { CostingCode: v, CostingCode3: '' });
+                                try { await getDeptosByLinea(v); } catch (e) { console.error(e); }
+                              }}
+                              options={dimOptsLinea}
+                              placeholder="Línea"
+                              disabled={readOnlyTotal}
+                              title={titleFromDim(ln.CostingCode, dLinea)}
+                              mode="dialog"
+                              dialogTitle="Seleccionar línea"
+                              inputClassName={styles.ssInput}
+                            />
+                          </div>
+
+                          <div>
+                            <SearchSelect
+                              value={ln.CostingCode2}
+                              onChange={(v) => updateRow(i, { CostingCode2: v })}
+                              options={dimOptsRegion}
+                              placeholder="Región"
+                              disabled={readOnlyTotal}
+                              title={titleFromDim(ln.CostingCode2, dRegion)}
+                              mode="dialog"
+                              dialogTitle="Seleccionar región"
+                              inputClassName={styles.ssInput}
+                            />
+                          </div>
+
+                          <div>
+                            <SearchSelect
+                              value={ln.CostingCode3}
+                              onChange={(v) => updateRow(i, { CostingCode3: v })}
+                              options={deptoOptsForRow(ln.CostingCode)}
+                              placeholder={ln.CostingCode ? "Departamento" : "Primero seleccione línea"}
+                              disabled={readOnlyTotal || !ln.CostingCode}
+                              title={titleFromDim(ln.CostingCode3, deptoListForRow(ln.CostingCode))}
+                              mode="dialog"
+                              dialogTitle="Seleccionar departamento"
+                              inputClassName={styles.ssInput}
+                            />
+                          </div>
+
+                          <div>
+                            <SearchSelect
+                              value={ln.IdSustentoTributario}
+                              onChange={(v) => updateRow(i, { IdSustentoTributario: v })}
+                              options={sustentoOpts}
+                              placeholder="Sustento"
+                              disabled={readOnlyTotal || !!t(ln.IdSustentoTributario)}
+                              title={titleFromOpts(ln.IdSustentoTributario, SUSTENTO_OPTS)}
+                              mode="dialog"
+                              dialogTitle="Seleccionar sustento"
+                              inputClassName={styles.ssInput}
+                              clearable={false}
+                            />
+                          </div>
+
+                          <div className={styles.num}>{total.toFixed(2)}</div>
+                        </div>
+                      );
+                    })}
+
                   </div>
-
-                  {rows.map((ln, i) => {
-                    const base = Math.max(0, n2(ln.Cantidad) * n2(ln.Precio));
-                    const disc = base * (n2(ln.Descuento) / 100);
-                    const total = Math.max(0, base - disc);
-
-                    return (
-                      <div className={styles.trow} key={i}>
-                        <div className={`${styles.idx} ${styles.sticky}`}>{i + 1}</div>
-
-                        <div>
-                          <input
-                            value={ln.ItemCode}
-                            onChange={e => updateRow(i, { ItemCode: e.target.value })}
-                            disabled={readOnlyTotal}
-                            placeholder="AR-7200SR"
-                            title={t(ln.ItemCode)}
-                          />
-                        </div>
-
-                        <div>
-                          <input
-                            value={ln.Descripcion}
-                            onChange={e => updateRow(i, { Descripcion: e.target.value })}
-                            disabled={readOnlyTotal}
-                            placeholder="Descripción del artículo"
-                            title={t(ln.Descripcion)}
-                          />
-                        </div>
-
-                        <div>
-                          <input
-                            type="number"
-                            min={1}
-                            step="1"
-                            value={ln.Cantidad ?? 1}
-                            onChange={(e) => {
-                              const v = Number(e.target.value);
-                              updateRow(i, { Cantidad: Number.isFinite(v) ? Math.max(1, v) : 1 });
-                            }}
-                            disabled={readOnlyTotal}
-                          />
-                        </div>
-
-                        <div>
-                          <input
-                            type="number"
-                            step="0.01"
-                            className={styles.numInp}
-                            value={ln.Precio}
-                            onChange={e => updateRow(i, { Precio: e.target.value })}
-                            disabled={readOnlyTotal}
-                          />
-                        </div>
-
-                        <div>
-                          <input
-                            type="number"
-                            step="0.01"
-                            className={styles.numInp}
-                            value={ln.Descuento}
-                            onChange={e => updateRow(i, { Descuento: e.target.value })}
-                            disabled={readOnlyTotal}
-                          />
-                        </div>
-
-                        <div>
-                          <SearchSelect
-                            value={ln.TaxCode}
-                            onChange={(v) => updateRow(i, { TaxCode: v })}
-                            options={ivaOpts}
-                            placeholder="IVA"
-                            disabled={readOnlyTotal}
-                            title={titleFromOpts(ln.TaxCode, IVA_OPTS)}
-                            mode="dialog"
-                            dialogTitle="Seleccionar IVA"
-                            inputClassName={styles.ssInput}
-                            clearable={false}
-                          />
-                        </div>
-
-                        {/* ✅ LÍNEA: al cambiar, limpia depto y precarga deptos */}
-                        <div>
-                          <SearchSelect
-                            value={ln.CostingCode}
-                            onChange={async (v) => {
-                              updateRow(i, { CostingCode: v, CostingCode3: '' });
-                              try { await getDeptosByLinea(v); } catch (e) { console.error(e); }
-                            }}
-                            options={dimOptsLinea}
-                            placeholder="Línea"
-                            disabled={readOnlyTotal}
-                            title={titleFromDim(ln.CostingCode, dLinea)}
-                            mode="dialog"
-                            dialogTitle="Seleccionar línea"
-                            inputClassName={styles.ssInput}
-                          />
-                        </div>
-
-                        <div>
-                          <SearchSelect
-                            value={ln.CostingCode2}
-                            onChange={(v) => updateRow(i, { CostingCode2: v })}
-                            options={dimOptsRegion}
-                            placeholder="Región"
-                            disabled={readOnlyTotal}
-                            title={titleFromDim(ln.CostingCode2, dRegion)}
-                            mode="dialog"
-                            dialogTitle="Seleccionar región"
-                            inputClassName={styles.ssInput}
-                          />
-                        </div>
-
-                        {/* ✅ DEPARTAMENTO depende de Línea */}
-                        <div>
-                          <SearchSelect
-                            value={ln.CostingCode3}
-                            onChange={(v) => updateRow(i, { CostingCode3: v })}
-                            options={deptoOptsForRow(ln.CostingCode)}
-                            placeholder={ln.CostingCode ? "Departamento" : "Primero seleccione línea"}
-                            disabled={readOnlyTotal || !ln.CostingCode}
-                            title={titleFromDim(ln.CostingCode3, deptoListForRow(ln.CostingCode))}
-                            mode="dialog"
-                            dialogTitle="Seleccionar departamento"
-                            inputClassName={styles.ssInput}
-                          />
-                        </div>
-
-                        {/* ✅ SUSTENTO (BLOQUEADO si ya está lleno) */}
-                        <div>
-                          <SearchSelect
-                            value={ln.IdSustentoTributario}
-                            onChange={(v) => updateRow(i, { IdSustentoTributario: v })}
-                            options={sustentoOpts}
-                            placeholder="Sustento"
-                            disabled={readOnlyTotal || !!t(ln.IdSustentoTributario)}
-                            title={titleFromOpts(ln.IdSustentoTributario, SUSTENTO_OPTS)}
-                            mode="dialog"
-                            dialogTitle="Seleccionar sustento"
-                            inputClassName={styles.ssInput}
-                            clearable={false}
-                          />
-                        </div>
-
-                        <div className={styles.num}>{total.toFixed(2)}</div>
-                      </div>
-                    );
-                  })}
                 </div>
               </div>
 
@@ -658,7 +641,6 @@ export default function FacturaPreviewModalArticulo({
           )}
         </div>
 
-        {/* Footer */}
         <div className={styles.modalFooter}>
           <div className={styles.resumen}>
             <div><span>Subtotal</span><strong className={styles.num}>${resumen.sub.toFixed(2)}</strong></div>
@@ -677,6 +659,7 @@ export default function FacturaPreviewModalArticulo({
             )}
           </div>
         </div>
+
       </div>
     </div>
   );

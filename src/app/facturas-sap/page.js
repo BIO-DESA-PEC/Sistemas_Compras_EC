@@ -27,7 +27,7 @@ export default function FacturasSAPPage() {
   // Buscador
   const [search, setSearch] = useState('');
 
-  // ✅ NUEVO: filtro de gasto (all | sin | con)
+  // filtro de gasto (all | sin | con)
   const [gastoFilter, setGastoFilter] = useState('all');
 
   // Paginado
@@ -35,9 +35,6 @@ export default function FacturasSAPPage() {
 
   const { data: session } = useSession();
   const [lockSoloGasto, setLockSoloGasto] = useState(false);
-
-  // ✅ Cache: DraftDocEntry -> true/false si ya tiene gasto
-  const [gastoByDraft, setGastoByDraft] = useState({}); // { [DraftDocEntry]: boolean }
 
   // --------- cargar rol (Data) ----------
   useEffect(() => {
@@ -65,8 +62,6 @@ export default function FacturasSAPPage() {
       const data = await getFacturasSap();
       setFacturas(data || []);
       setPage(1);
-      // opcional: limpiar cache si quieres recalcular todo
-      // setGastoByDraft({});
     } catch (err) {
       console.error(err);
       setError(err?.message || 'No se pudieron cargar las facturas.');
@@ -101,20 +96,19 @@ export default function FacturasSAPPage() {
     });
   }, [facturas, search]);
 
-  // ✅ NUEVO: filtro por gasto usando cache gastoByDraft
+  // ✅ filtro por gasto usando el campo que viene del backend: TieneGasto
   const filteredFacturasFinal = useMemo(() => {
     if (gastoFilter === 'all') return filteredFacturas;
 
     return filteredFacturas.filter((f) => {
-      const docEntry = Number(f?.DraftDocEntry);
-      const hasGasto = Number.isFinite(docEntry) ? !!gastoByDraft[docEntry] : false;
+      const hasGasto = !!f?.TieneGasto;
 
       if (gastoFilter === 'con') return hasGasto;
       if (gastoFilter === 'sin') return !hasGasto;
 
       return true;
     });
-  }, [filteredFacturas, gastoFilter, gastoByDraft]);
+  }, [filteredFacturas, gastoFilter]);
 
   // --------- paginado ----------
   const totalRows = filteredFacturasFinal.length;
@@ -129,51 +123,6 @@ export default function FacturasSAPPage() {
     if (p < 1 || p > totalPages) return;
     setPage(p);
   };
-
-  // ✅ Detecta si un draft YA tiene gasto leyendo el Draft (real)
-  const checkDraftHasGasto = useCallback(async (draftDocEntry) => {
-    try {
-      const draft = await getFacturaSapByDraft(draftDocEntry);
-      const lineas = draft?.Lineas || [];
-      // busca ConceptoGasto en cualquiera
-      const has = lineas.some(ln => String(ln?.ConceptoGasto || "").trim().length > 0);
-      return has;
-    } catch (e) {
-      console.error("checkDraftHasGasto error:", e);
-      return false;
-    }
-  }, []);
-
-  // ✅ Prefetch (solo para la página actual) y cachear
-  useEffect(() => {
-    let alive = true;
-
-    (async () => {
-      const toCheck = paginatedFacturas
-        .map(r => Number(r?.DraftDocEntry))
-        .filter(n => Number.isFinite(n) && gastoByDraft[n] === undefined);
-
-      if (!toCheck.length) return;
-
-      // OJO: esto hace llamadas al back por cada draft en la página (máx 20)
-      const results = await Promise.all(
-        toCheck.map(async (docEntry) => {
-          const has = await checkDraftHasGasto(docEntry);
-          return [docEntry, has];
-        })
-      );
-
-      if (!alive) return;
-
-      setGastoByDraft(prev => {
-        const next = { ...prev };
-        for (const [docEntry, has] of results) next[docEntry] = has;
-        return next;
-      });
-    })();
-
-    return () => { alive = false; };
-  }, [paginatedFacturas, gastoByDraft, checkDraftHasGasto]);
 
   // --------- abrir modal ----------
   const handleOpenDraft = async (row) => {
@@ -225,7 +174,6 @@ export default function FacturasSAPPage() {
             }}
           />
 
-          {/* ✅ NUEVO: filtro por gasto */}
           <select
             className={styles.filterSelect}
             value={gastoFilter}
@@ -263,20 +211,14 @@ export default function FacturasSAPPage() {
                 <th>Estado</th>
                 <th>Proveedor (SAP)</th>
                 <th>Total (SAP)</th>
-
-                {/* ✅ NUEVO: estado de gasto al lado de Acciones */}
                 <th>Gasto</th>
-
                 <th>Acciones</th>
               </tr>
             </thead>
 
             <tbody>
               {paginatedFacturas.map((f, i) => {
-                const docEntry = Number(f?.DraftDocEntry);
-                const hasGasto = Number.isFinite(docEntry) ? !!gastoByDraft[docEntry] : false;
-
-                // ✅ si ya tiene gasto => botón "Ver"
+                const hasGasto = !!f?.TieneGasto;
                 const label = hasGasto ? "Ver" : "Editar";
 
                 return (
@@ -291,7 +233,6 @@ export default function FacturasSAPPage() {
                         .toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
 
-                    {/* ✅ NUEVO: pill estado gasto */}
                     <td>
                       <span
                         className={`${styles.gastoPill} ${hasGasto ? styles.gastoOk : styles.gastoPend}`}
