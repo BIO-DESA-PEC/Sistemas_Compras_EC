@@ -212,7 +212,7 @@ export default function FacturaPreviewModalArticulo({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const dimOptsLinea = useMemo(() => (dLinea || []).map(o => ({ value: o.code, label: `${o.code} — ${o.name}` })), [dLinea]);
+  const dimOptsLinea  = useMemo(() => (dLinea || []).map(o => ({ value: o.code, label: `${o.code} — ${o.name}` })), [dLinea]);
   const dimOptsRegion = useMemo(() => (dRegion || []).map(o => ({ value: o.code, label: `${o.code} — ${o.name}` })), [dRegion]);
 
   const ivaOpts = useMemo(() => IVA_OPTS.map(o => ({ value: o.value, label: o.label })), []);
@@ -315,10 +315,14 @@ export default function FacturaPreviewModalArticulo({
       }
 
       const payload = {
+        ForceService: true, // ✅ SIEMPRE manda como SERVICIO por detrás
         Cabecera: {
           CardCode: cabecera.CardCode,
           CardName: cabecera.CardName,
-          Comments: cabecera.Comments,
+          Comments: [
+            'BORRADOR DE TIPO ARTICULO',
+            cabecera.Comments || ''
+          ].filter(Boolean).join(' | '),
           DocDate: cabecera.DocDate,
           DocDueDate: cabecera.DocDueDate,
           Serie: cabecera.Serie,
@@ -334,7 +338,7 @@ export default function FacturaPreviewModalArticulo({
           IdSustentoTributario: cabecera.IdSustentoTributario,
         },
         Lineas: rows.map((r) => ({
-          ItemCode: String(r.ItemCode || '').trim(),
+          ItemCode: String(r.ItemCode || '').trim(),     // UI lo manda, backend lo traduce a AccountCode
           Descripcion: String(r.Descripcion || ''),
           Cantidad: Number(r.Cantidad ?? 1),
           Quantity: Number(r.Cantidad ?? 1),
@@ -359,7 +363,7 @@ export default function FacturaPreviewModalArticulo({
       const j = await res.json();
       if (!res.ok) throw new Error(j?.error || 'No se pudo actualizar el borrador');
 
-      setMsg({ type: 'ok', text: 'Borrador ARTÍCULO actualizado en SAP.' });
+      setMsg({ type: 'ok', text: 'Borrador actualizado en SAP (guardado como SERVICIO por detrás).' });
       onUse?.({ clase: 'ARTICULO', draftUpdated: true, docEntry });
 
       if (modo === 'facturas_sap') setFinalizado(true);
@@ -467,11 +471,9 @@ export default function FacturaPreviewModalArticulo({
                 </label>
               </div>
 
-              {/* ✅ TABLA PRO (mismo fix) */}
               <div className={styles.tableCard}>
                 <div className={styles.tscroll}>
                   <div className={styles.tableGrid}>
-
                     <div className={styles.theadRow}>
                       <div className={`${styles.idx} ${styles.stickyHead}`}>#</div>
                       <div>Código artículo</div>
@@ -511,7 +513,7 @@ export default function FacturaPreviewModalArticulo({
                               value={ln.Descripcion}
                               onChange={e => updateRow(i, { Descripcion: e.target.value })}
                               disabled={readOnlyTotal}
-                              placeholder="Descripción del artículo"
+                              placeholder="Descripción"
                               title={t(ln.Descripcion)}
                             />
                           </div>
@@ -631,7 +633,6 @@ export default function FacturaPreviewModalArticulo({
                         </div>
                       );
                     })}
-
                   </div>
                 </div>
               </div>

@@ -107,11 +107,22 @@ export default function AnticipoModal({ onClose, onSuccess, idSolicitud }) {
         IdSolicitud: idSolicitud || null,
       };
 
-      const res = await fetch(`${API}/api/anticipos`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      const email =
+  session?.user?.email ||
+  session?.email ||
+  session?.user?.preferred_username ||
+  "";
+
+const res = await fetch(`${API}/api/anticipos`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    ...(session?.accessToken ? { Authorization: `Bearer ${session.accessToken}` } : {}),
+    "X-User-Email": email,
+  },
+  body: JSON.stringify(body),
+});
+
 
       if (!res.ok) throw new Error(await res.text());
 
