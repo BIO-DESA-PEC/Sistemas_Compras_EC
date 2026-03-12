@@ -79,10 +79,7 @@ export default async function DashboardPage() {
         </tbody>
       </table>
 
-     {/* Atajo a OCs */}
-      <div style={{ marginTop: 12 }} className={styles.sub}>
-        Órdenes de compra generadas: <b>{stats.ordenesCompra}</b> — <Link href="/ordenes">ver</Link>
-      </div>
+     
 
     </div>
   );

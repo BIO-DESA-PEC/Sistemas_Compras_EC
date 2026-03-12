@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import styles from "./new.module.css";
-import { Plus, Trash2, Check, AlertCircle } from "lucide-react";
+import { Plus, Trash2, Check, AlertCircle, Paperclip, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 function emptyRow() {
@@ -16,9 +16,9 @@ function emptyRow() {
 
 export default function SolicitudForm({
   user,
-  mode = "create",            // "create" | "edit" | "view"
-  initial = null,             // { cabecera, detalle } para editar/ver
-  lockReason = null,          // texto cuando está bloqueado
+  mode = "create",
+  initial = null,
+  lockReason = null,
 }) {
   const router = useRouter();
 
@@ -26,47 +26,43 @@ export default function SolicitudForm({
   const isEdit   = mode === "edit";
   const isView   = mode === "view";
 
-  // Tipo de requerimiento: "ARTICULO" | "SERVICIO"
   const [tipo, setTipo] = useState("ARTICULO");
-
   const [rows, setRows] = useState([emptyRow()]);
   const [sending, setSending] = useState(false);
   const [okId, setOkId] = useState(initial?.cabecera?.IdSolicitud ?? null);
   const [errorMsg, setErrorMsg] = useState("");
   const [comentarios, setComentarios] = useState(initial?.cabecera?.Comentarios ?? "");
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [adjuntos, setAdjuntos] = useState(initial?.adjuntos ?? []);
 
-  // ✅ ===== ROLES (según tu endpoint by-email) =====
-  // user.RolNombre viene como: "Administrador", "Compras", "Usuario", "Contabilidad", etc.
   const rolNombre = useMemo(() => {
-    const r = (user?.RolNombre || "").trim();
-    return r;
+    return (user?.RolNombre || "").trim();
   }, [user]);
 
-  // ✅ Solo estos roles pueden auto-aprobar y crear OC
   const puedeCrearOC = useMemo(() => {
     const r = rolNombre.toUpperCase();
     return r === "ADMINISTRADOR" || r === "COMPRAS";
   }, [rolNombre]);
-  // ✅ ============================================
 
-  // Precarga cuando viene "initial"
   useEffect(() => {
-  if (initial?.cabecera?.Tipo) {
-    setTipo((initial.cabecera.Tipo || "ARTICULO").toUpperCase());
-  }
-  if (initial?.detalle?.length) {
-    setRows(
-      initial.detalle.map((d) => ({
-        NumeroArticulo: d.NumeroArticulo ?? "",
-        Descripcion: d.Descripcion ?? "",
-        FechaNecesaria: (d.FechaNecesaria || "").slice(0, 10),
-        Cantidad: d.Cantidad ?? 1,
-      }))
-    );
-  }
-}, [initial]);
+    if (initial?.cabecera?.Tipo) {
+      setTipo((initial.cabecera.Tipo || "ARTICULO").toUpperCase());
+    }
+    if (initial?.detalle?.length) {
+      setRows(
+        initial.detalle.map((d) => ({
+          NumeroArticulo: d.NumeroArticulo ?? "",
+          Descripcion: d.Descripcion ?? "",
+          FechaNecesaria: (d.FechaNecesaria || "").slice(0, 10),
+          Cantidad: d.Cantidad ?? 1,
+        }))
+      );
+    }
+    if (initial?.adjuntos?.length) {
+      setAdjuntos(initial.adjuntos);
+    }
+  }, [initial]);
 
-  // Si cambian a SERVICIO, normalizamos Cantidad=1 y vaciamos FechaNecesaria (oculta)
   useEffect(() => {
     if (tipo === "SERVICIO") {
       setRows(prev => prev.map(r => ({
@@ -80,10 +76,7 @@ export default function SolicitudForm({
   const PAGE_SIZE = 10;
   const [page, setPage] = useState(1);
 
-  // Total páginas según filas
-  const totalPages = useMemo(() => {
-    return Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-  }, [rows.length]);
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(rows.length / PAGE_SIZE)), [rows.length]);
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
@@ -102,35 +95,48 @@ export default function SolicitudForm({
   };
 
   const addRow = () =>
-  setRows(prev => {
-    const lastFecha =
-      [...prev].reverse().find(r => (r.FechaNecesaria || "").trim())?.FechaNecesaria || "";
+    setRows(prev => {
+      const lastFecha =
+        [...prev].reverse().find(r => (r.FechaNecesaria || "").trim())?.FechaNecesaria || "";
 
-    const newRow = { ...emptyRow(), FechaNecesaria: (tipo === "ARTICULO" ? lastFecha : "") };
-    if (tipo === "SERVICIO") newRow.Cantidad = 1;
+      const newRow = { ...emptyRow(), FechaNecesaria: (tipo === "ARTICULO" ? lastFecha : "") };
+      if (tipo === "SERVICIO") newRow.Cantidad = 1;
 
-    const next = [...prev, newRow];
+      const next = [...prev, newRow];
+      const lastPage = Math.max(1, Math.ceil(next.length / PAGE_SIZE));
+      setPage(lastPage);
 
-    // ✅ saltar a la última página
-    const lastPage = Math.max(1, Math.ceil(next.length / PAGE_SIZE));
-    setPage(lastPage);
-
-    return next;
-  });
+      return next;
+    });
 
   const removeRow = (i) =>
     setRows(prev => prev.length === 1 ? prev : prev.filter((_, idx) => idx !== i));
 
+  const onPickFiles = (e) => {
+    const picked = Array.from(e.target.files || []);
+    if (!picked.length) return;
+
+    setSelectedFiles(prev => {
+      const existing = new Set(prev.map(f => `${f.name}-${f.size}-${f.lastModified}`));
+      const uniques = picked.filter(f => !existing.has(`${f.name}-${f.size}-${f.lastModified}`));
+      return [...prev, ...uniques];
+    });
+
+    e.target.value = "";
+  };
+
+  const removeSelectedFile = (idx) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== idx));
+  };
+
   const validate = () => {
-    if (isView) return ""; // no valida en solo lectura
+    if (isView) return "";
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
-      // Nombre (Artículo o Servicio)
-      if (!r.NumeroArticulo?.trim())
+      if (!r.NumeroArticulo?.trim()) {
         return `Fila ${i + 1}: falta ${tipo === "SERVICIO" ? "Nombre del servicio" : "Artículo/Servicio"}`;
-
-      if (!r.Descripcion?.trim())
-        return `Fila ${i + 1}: falta Descripción`;
+      }
+      if (!r.Descripcion?.trim()) return `Fila ${i + 1}: falta Descripción`;
 
       if (tipo === "ARTICULO") {
         if (!r.FechaNecesaria) return `Fila ${i + 1}: falta Fecha Necesaria`;
@@ -140,62 +146,75 @@ export default function SolicitudForm({
     return "";
   };
 
-  // submit(action): "approval" | "auto"
+  const buildDetalle = () => {
+    return rows.map(r => {
+      if (tipo === "SERVICIO") {
+        return {
+          NumeroArticulo: r.NumeroArticulo.trim(),
+          Descripcion: r.Descripcion.trim(),
+          FechaNecesaria: null,
+          Cantidad: 1,
+        };
+      }
+      return {
+        NumeroArticulo: r.NumeroArticulo.trim(),
+        Descripcion: r.Descripcion.trim(),
+        FechaNecesaria: r.FechaNecesaria,
+        Cantidad: Number(r.Cantidad),
+      };
+    });
+  };
+
   const submit = async (e, action = "approval") => {
     e.preventDefault();
     if (isView) return;
+
     setErrorMsg("");
 
     const v = validate();
-    if (v) { setErrorMsg(v); return; }
+    if (v) {
+      setErrorMsg(v);
+      return;
+    }
 
-    // ✅ Seguridad UI: si NO puede crear OC, bloqueamos action="auto"
     if (action === "auto" && !puedeCrearOC) {
       setErrorMsg("No autorizado: tu rol no puede aprobar y crear OC.");
       return;
     }
 
     setSending(true);
-    try {
-      const detalle = rows.map(r => {
-        if (tipo === "SERVICIO") {
-          return {
-            NumeroArticulo: r.NumeroArticulo.trim(), // nombre del servicio
-            Descripcion: r.Descripcion.trim(),
-            FechaNecesaria: null,   // no aplica
-            Cantidad: 1,            // fijo en 1
-          };
-        }
-        // ARTÍCULO
-        return {
-          NumeroArticulo: r.NumeroArticulo.trim(),
-          Descripcion: r.Descripcion.trim(),
-          FechaNecesaria: r.FechaNecesaria,
-          Cantidad: Number(r.Cantidad),
-        };
-      });
 
+    try {
+      const detalle = buildDetalle();
       const autoApprove = action === "auto";
 
       if (isCreate) {
-        const payload = {
-          cabecera: {
-            IdUsuario: user.IdUsuario,
-            DepartamentoId: user.DepartamentoId,
-            Tipo: tipo,
-             Comentarios: comentarios?.trim() || "",
-          },
-          detalle,
-          autoApprove,
-        };
+        const form = new FormData();
+
+        form.append("cabecera", JSON.stringify({
+          IdUsuario: user.IdUsuario,
+          DepartamentoId: user.DepartamentoId,
+          Tipo: tipo,
+          Comentarios: comentarios?.trim() || "",
+        }));
+
+        form.append("detalle", JSON.stringify(detalle));
+        form.append("autoApprove", autoApprove ? "true" : "false");
+
+        for (const file of selectedFiles) {
+          form.append("adjuntos", file);
+        }
 
         const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/solicitudes`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+          body: form,
         });
-        if (!res.ok) throw new Error(await res.text());
-        const data = await res.json();
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data?.error || "No se pudo crear la solicitud");
+        }
+
         const newId = data.IdSolicitud || data.id || data.solicitudId || null;
         setOkId(newId);
         router.push("/solicitudes");
@@ -204,15 +223,24 @@ export default function SolicitudForm({
 
       if (isEdit && initial?.cabecera?.IdSolicitud) {
         const id = initial.cabecera.IdSolicitud;
-        const payload = { detalle, autoApprove, Tipo: tipo, Comentarios: comentarios?.trim() || "" };
+
         const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/solicitudes/${id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+          body: JSON.stringify({
+            detalle,
+            autoApprove,
+            Tipo: tipo,
+            Comentarios: comentarios?.trim() || "",
+          }),
         });
-        if (!res.ok) throw new Error(await res.text());
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data?.error || "No se pudo actualizar la solicitud");
+        }
+
         router.push("/solicitudes");
-        return;
       }
     } catch (err) {
       setErrorMsg(String(err?.message || err));
@@ -223,7 +251,6 @@ export default function SolicitudForm({
 
   const disabledAll = isView || sending;
 
-  // Datos de meta (cabecera visual)
   const metaId     = okId ?? initial?.cabecera?.IdSolicitud ?? null;
   const metaCodigo = initial?.cabecera?.Codigo ?? null;
   const metaEstado = isCreate ? "PENDIENTE" : (initial?.cabecera?.Estado ?? "—");
@@ -241,13 +268,10 @@ export default function SolicitudForm({
           </h1>
           <div className={styles.sub}>
             Solicitante: <b>{user.Nombre}</b> — Depto: <b>{metaDepto}</b>
-            {/* opcional para debug */}
-            {/* <span style={{ marginLeft: 10, opacity: 0.7 }}>Rol: {rolNombre || "—"}</span> */}
           </div>
         </div>
       </div>
 
-      {/* Selector de tipo */}
       <div className={styles.row}>
         <label className={styles.label}>Tipo de requerimiento</label>
         <div className={styles.chips}>
@@ -270,7 +294,6 @@ export default function SolicitudForm({
         </div>
       </div>
 
-      {/* Cabecera visual */}
       <div className={styles.meta}>
         <div>
           <span>Código</span>
@@ -282,17 +305,18 @@ export default function SolicitudForm({
         <div><span>Fecha creación</span><b>{metaFecha}</b></div>
       </div>
 
-      {/* Alertas */}
       {!!errorMsg && (
         <div className={`${styles.alert} ${styles.error}`}>
           <AlertCircle size={16}/> {errorMsg}
         </div>
       )}
+
       {!!okId && isCreate && (
         <div className={`${styles.alert} ${styles.success}`}>
           <Check size={16}/> Solicitud creada <b>#{okId}</b>.
         </div>
       )}
+
       {isView && lockReason && (
         <div className={`${styles.alert} ${styles.error}`}>
           <AlertCircle size={16}/> {lockReason}
@@ -300,7 +324,6 @@ export default function SolicitudForm({
       )}
 
       <form onSubmit={(e) => submit(e)} className={styles.form}>
-        {/* Encabezado de grilla */}
         <div className={styles.gridHead}>
           <div>#</div>
           <div>{tipo === "SERVICIO" ? "Nombre del servicio" : "Artículo"}</div>
@@ -309,114 +332,82 @@ export default function SolicitudForm({
           {tipo === "ARTICULO" && <div>Cant.</div>}
           <div></div>
         </div>
-        {/* Filas */}
+
         {pageRows.map((r, localIdx) => {
-  const i = pageStart + localIdx; // índice real en rows
+          const i = pageStart + localIdx;
 
-  return (
-    <div className={styles.gridRow} key={i}>
-      <div className={styles.mono}>#{i + 1}</div>
+          return (
+            <div className={styles.gridRow} key={i}>
+              <div className={styles.mono}>#{i + 1}</div>
 
-      <input
-        className={styles.input}
-        disabled={disabledAll}
-        value={r.NumeroArticulo}
-        onChange={e => setRow(i, { NumeroArticulo: e.target.value })}
-        placeholder={tipo === "SERVICIO" ? "Mantenimiento preventivo" : "AF-1001"}
-      />
+              <input
+                className={styles.input}
+                disabled={disabledAll}
+                value={r.NumeroArticulo}
+                onChange={e => setRow(i, { NumeroArticulo: e.target.value })}
+                placeholder={tipo === "SERVICIO" ? "Mantenimiento preventivo" : "AF-1001"}
+              />
 
-      <textarea
-        className={styles.input}
-        disabled={disabledAll}
-        value={r.Descripcion}
-        onChange={e => setRow(i, { Descripcion: e.target.value })}
-        placeholder="Describe el artículo o servicio solicitado…"
-        rows={1}
-      />
+              <textarea
+                className={styles.input}
+                disabled={disabledAll}
+                value={r.Descripcion}
+                onChange={e => setRow(i, { Descripcion: e.target.value })}
+                placeholder="Describe el artículo o servicio solicitado…"
+                rows={1}
+              />
 
-      {tipo === "ARTICULO" && (
-        <input
-          className={styles.input}
-          type="date"
-          disabled={disabledAll}
-          value={r.FechaNecesaria}
-          onChange={e => setRow(i, { FechaNecesaria: e.target.value })}
-        />
-      )}
+              {tipo === "ARTICULO" && (
+                <input
+                  className={styles.input}
+                  type="date"
+                  disabled={disabledAll}
+                  value={r.FechaNecesaria}
+                  onChange={e => setRow(i, { FechaNecesaria: e.target.value })}
+                />
+              )}
 
-      {tipo === "ARTICULO" && (
-        <input
-          className={styles.input}
-          type="number" min="1" step="1"
-          disabled={disabledAll}
-          value={r.Cantidad}
-          onChange={e => setRow(i, { Cantidad: e.target.value })}
-        />
-      )}
+              {tipo === "ARTICULO" && (
+                <input
+                  className={styles.input}
+                  type="number"
+                  min="1"
+                  step="1"
+                  disabled={disabledAll}
+                  value={r.Cantidad}
+                  onChange={e => setRow(i, { Cantidad: e.target.value })}
+                />
+              )}
 
-      {!disabledAll && (
-        <button
-          type="button"
-          className={styles.iconBtn}
-          onClick={() => removeRow(i)}
-          title="Eliminar"
-        >
-          <Trash2 size={16} />
-        </button>
-      )}
-    </div>
-  );
-})}
-{/* ✅ Paginador */}
-{rows.length > PAGE_SIZE && (
-  <div className={styles.pager}>
-    <div className={styles.pagerInfo}>
-      Mostrando <b>{pageStart + 1}</b>–<b>{Math.min(pageStart + PAGE_SIZE, rows.length)}</b> de <b>{rows.length}</b>
-    </div>
+              {!disabledAll && (
+                <button
+                  type="button"
+                  className={styles.iconBtn}
+                  onClick={() => removeRow(i)}
+                  title="Eliminar"
+                >
+                  <Trash2 size={16} />
+                </button>
+              )}
+            </div>
+          );
+        })}
 
-    <div className={styles.pagerBtns}>
-      <button
-        type="button"
-        className={styles.pagerBtn}
-        disabled={disabledAll || page === 1}
-        onClick={() => setPage(1)}
-      >
-        «
-      </button>
+        {rows.length > PAGE_SIZE && (
+          <div className={styles.pager}>
+            <div className={styles.pagerInfo}>
+              Mostrando <b>{pageStart + 1}</b>–<b>{Math.min(pageStart + PAGE_SIZE, rows.length)}</b> de <b>{rows.length}</b>
+            </div>
 
-      <button
-        type="button"
-        className={styles.pagerBtn}
-        disabled={disabledAll || page === 1}
-        onClick={() => setPage(p => Math.max(1, p - 1))}
-      >
-        Anterior
-      </button>
-
-      <div className={styles.pagerPage}>
-        Página <b>{page}</b> / <b>{totalPages}</b>
-      </div>
-
-      <button
-        type="button"
-        className={styles.pagerBtn}
-        disabled={disabledAll || page === totalPages}
-        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-      >
-        Siguiente
-      </button>
-
-      <button
-        type="button"
-        className={styles.pagerBtn}
-        disabled={disabledAll || page === totalPages}
-        onClick={() => setPage(totalPages)}
-      >
-        »
-      </button>
-    </div>
-  </div>
-)}
+            <div className={styles.pagerBtns}>
+              <button type="button" className={styles.pagerBtn} disabled={disabledAll || page === 1} onClick={() => setPage(1)}>«</button>
+              <button type="button" className={styles.pagerBtn} disabled={disabledAll || page === 1} onClick={() => setPage(p => Math.max(1, p - 1))}>Anterior</button>
+              <div className={styles.pagerPage}>Página <b>{page}</b> / <b>{totalPages}</b></div>
+              <button type="button" className={styles.pagerBtn} disabled={disabledAll || page === totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))}>Siguiente</button>
+              <button type="button" className={styles.pagerBtn} disabled={disabledAll || page === totalPages} onClick={() => setPage(totalPages)}>»</button>
+            </div>
+          </div>
+        )}
 
         {!disabledAll && (
           <div className={styles.toolbar}>
@@ -431,56 +422,108 @@ export default function SolicitudForm({
           </div>
         )}
 
-        {/* ✅ Acciones (según rol) */}
+        <div className={styles.row}>
+          <label className={styles.label}>Comentarios</label>
+          <textarea
+            className={styles.input}
+            rows={3}
+            disabled={disabledAll}
+            value={comentarios}
+            onChange={(e) => setComentarios(e.target.value)}
+            placeholder="Observaciones adicionales…"
+          />
+        </div>
+
+        {!isView && (
+          <div className={styles.row}>
+            <label className={styles.label}>Adjuntos</label>
+
+            <label className={styles.filePicker}>
+              <input
+                type="file"
+                multiple
+                onChange={onPickFiles}
+                disabled={disabledAll}
+                style={{ display: "none" }}
+              />
+              <span className={styles.fileBtn}>
+                <Paperclip size={16} /> Seleccionar archivos
+              </span>
+            </label>
+
+            {!!selectedFiles.length && (
+              <div className={styles.filesList}>
+                {selectedFiles.map((f, idx) => (
+                  <div className={styles.fileItem} key={`${f.name}-${f.size}-${idx}`}>
+                    <span>{f.name}</span>
+                    <button
+                      type="button"
+                      className={styles.fileRemove}
+                      onClick={() => removeSelectedFile(idx)}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {!!adjuntos.length && (
+          <div className={styles.row}>
+            <label className={styles.label}>Adjuntos cargados</label>
+            <div className={styles.filesList}>
+              {adjuntos.map((a) => (
+                <a
+                  key={a.IdAdjunto}
+                  className={styles.fileItem}
+                  href={`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/solicitudes/${initial?.cabecera?.IdSolicitud}/adjuntos/${a.IdAdjunto}/download`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <span>{a.NombreArchivo}</span>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className={styles.actions}>
-  {!isView && (
-    <>
-      {/* ✅ SIEMPRE: Enviar para aprobación */}
-      <button
-        type="button"
-        className={styles.primary}
-        disabled={sending}
-        onClick={(e) => submit(e, "approval")}
-        title="Enviar para aprobación (manda correo al aprobador)"
-      >
-        {sending ? "Enviando..." : "Enviar para aprobación"}
-      </button>
+          {!isView && (
+            <>
+              <button
+                type="button"
+                className={styles.primary}
+                disabled={sending}
+                onClick={(e) => submit(e, "approval")}
+                title="Enviar para aprobación"
+              >
+                {sending ? "Enviando..." : "Enviar para aprobación"}
+              </button>
 
-      {/* ✅ SOLO ADMINISTRADOR / COMPRAS: botón extra para crear OC */}
-      {puedeCrearOC && (
-        <button
-          type="button"
-          className={styles.secondary}
-          disabled={sending}
-          onClick={(e) => submit(e, "auto")}
-          title="Aprueba automáticamente y crea la OC"
-        >
-          {sending ? "Procesando..." : "Enviar (aprobar y crear OC)"}
-        </button>
-      )}
-    </>
-  )}
+              {puedeCrearOC && (
+                <button
+                  type="button"
+                  className={styles.secondary}
+                  disabled={sending}
+                  onClick={(e) => submit(e, "auto")}
+                  title="Aprueba automáticamente y crea la OC"
+                >
+                  {sending ? "Procesando..." : "Enviar (aprobar y crear OC)"}
+                </button>
+              )}
+            </>
+          )}
 
-  {/* ✅ Cancelar siempre */}
-  <button
-    type="button"
-    className={styles.ghost}
-    onClick={() => router.push("/solicitudes")}
-  >
-    {isView ? "Volver al listado" : "Cancelar"}
-  </button>
-</div>
-<div className={styles.row}>
-  <label className={styles.label}>Comentarios</label>
-  <textarea
-    className={styles.input}
-    rows={3}
-    disabled={disabledAll}
-    value={comentarios}
-    onChange={(e) => setComentarios(e.target.value)}
-    placeholder="Observaciones adicionales…"
-  />
-</div>
+          <button
+            type="button"
+            className={styles.ghost}
+            onClick={() => router.push("/solicitudes")}
+          >
+            {isView ? "Volver al listado" : "Cancelar"}
+          </button>
+        </div>
       </form>
     </div>
   );
