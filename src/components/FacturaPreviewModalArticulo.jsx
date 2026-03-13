@@ -623,21 +623,10 @@ const dimOptsRegion = useMemo(
                           </div>
 
                           <div>
-                            <SearchSelect
-                              value={ln.CostingCode3}
-                              onChange={async (v) => {
-                                const val = String(v || '');
-                                updateRow(i, { CostingCode: val, CostingCode3: '' });
-                                try { await getDeptosByLinea(val); } catch (e) { console.error(e); }
-                              }}
-                              options={deptoOptsForRow(ln.CostingCode)}
-                              placeholder={ln.CostingCode ? "Departamento" : "Primero seleccione línea"}
-                              disabled={readOnlyTotal || !ln.CostingCode}
-                              title={titleFromDim(ln.CostingCode3, deptoListForRow(ln.CostingCode))}
-                              mode="dialog"
-                              dialogTitle="Seleccionar departamento"
-                              inputClassName={styles.ssInput}
-                            />
+                            <input
+  readOnly
+  value={titleFromDim(ln.CostingCode3, deptoListForRow(ln.CostingCode))}
+/>
                           </div>
 
                           <div>
