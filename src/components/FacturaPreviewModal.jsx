@@ -29,10 +29,16 @@ function titleFromOpts(value, opts = []) {
   return found ? found.label : v;
 }
 function titleFromDim(code, list = []) {
-  const v = t(code);
+  const v = String(code ?? '').trim();
   if (!v) return '';
-  const found = list.find(o => String(o.code) === v);
-  return found ? `${found.code} — ${found.name}` : v;
+
+  const found = (list || []).find(
+    o => String(o.code ?? '').trim() === v
+  );
+
+  return found
+    ? `${String(found.code ?? '').trim()} — ${String(found.name ?? '').trim()}`
+    : v;
 }
 
 export default function FacturaPreviewModal({
@@ -100,21 +106,23 @@ export default function FacturaPreviewModal({
 
   /* ===== LINEAS ===== */
   const [rows, setRows] = useState(() =>
-    ((data?.Lineas || [])).map((ln) => ({
-      ItemCode: ln.ItemCode || '',
-      Descripcion: ln.ItemDescription || '',
-      Cuenta: ln.AccountCode || '',
-      Cantidad: n2(ln.Quantity ?? 1),
-      Precio: n2(ln.UnitPrice ?? 0),
-      Descuento: n2(ln.DiscountPercent ?? 0),
-      TaxCode: ln.TaxCode || 'IVA_15',
-      CostingCode: ln.CostingCode || '',
-      CostingCode2: ln.CostingCode2 || '',
-      CostingCode3: ln.CostingCode3 || '',
-      IdSustentoTributario: ln.U_SYP_CODIDTRD || (data?.Cabecera?.IdSustentoTributario ?? '01'),
-      ConceptoGasto: str(ln.ConceptoGasto || ''),
-    }))
-  );
+  ((data?.Lineas || [])).map((ln) => ({
+    ItemCode: String(ln.ItemCode || ''),
+    Descripcion: String(ln.ItemDescription || ''),
+    Cuenta: String(ln.AccountCode || ''),
+    Cantidad: n2(ln.Quantity ?? 1),
+    Precio: n2(ln.UnitPrice ?? 0),
+    Descuento: n2(ln.DiscountPercent ?? 0),
+    TaxCode: String(ln.TaxCode || 'IVA_15'),
+    CostingCode: String(ln.CostingCode || ''),
+    CostingCode2: String(ln.CostingCode2 || ''),
+    CostingCode3: String(ln.CostingCode3 || ''),
+    IdSustentoTributario: String(
+      ln.U_SYP_CODIDTRD || (data?.Cabecera?.IdSustentoTributario ?? '01')
+    ),
+    ConceptoGasto: String(ln.ConceptoGasto || ''),
+  }))
+);
 
   /* ===== BLOQUEO ===== */
   const [finalizado, setFinalizado] = useState(false);
@@ -142,8 +150,8 @@ export default function FacturaPreviewModal({
      Helpers deptos
   ========================================================= */
   function deptoListForRow(lineaCode) {
-  const k = String(lineaCode || '').trim();
-  return k && deptosCache[k] ? deptosCache[k] : [];
+  const k = String(lineaCode ?? '').trim();
+  return Array.isArray(deptosCache[k]) ? deptosCache[k] : [];
 }
 
 function deptoOptsForRow(lineaCode) {
@@ -178,24 +186,29 @@ function deptoOptsForRow(lineaCode) {
 
   // ✅ trae deptos por línea y guarda en cache
   async function getDeptosByLinea(lineaCode) {
-  const k = String(lineaCode || '').trim();
+  const k = String(lineaCode ?? '').trim();
   if (!k) return [];
 
-  if (deptosCache[k]) return deptosCache[k];
+  if (Array.isArray(deptosCache[k]) && deptosCache[k].length) {
+    return deptosCache[k];
+  }
 
   const base = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://back-compras-ec.onrender.com';
   const res = await fetch(`${base}/api/dimensiones/departamento?linea=${encodeURIComponent(k)}`);
   const j = await res.json();
 
   const arr = (Array.isArray(j) ? j : [])
-    .map(d => {
-      const code = String(d?.code ?? d?.Code ?? '').trim();
-      const name = String(d?.name ?? d?.Name ?? '').trim();
-      return { code, name };
-    })
+    .map(d => ({
+      code: String(d?.code ?? d?.Code ?? '').trim(),
+      name: String(d?.name ?? d?.Name ?? '').trim(),
+    }))
     .filter(d => d.code);
 
-  setDeptosCache(prev => ({ ...prev, [k]: arr }));
+  setDeptosCache(prev => ({
+    ...prev,
+    [k]: arr
+  }));
+
   return arr;
 }
 
@@ -313,17 +326,28 @@ function deptoOptsForRow(lineaCode) {
 
   // ✅ precargar deptos para líneas ya existentes al abrir
   useEffect(() => {
-    if (!open) return;
-    (async () => {
-      const unicas = Array.from(
-        new Set((rows || []).map(r => String(r.CostingCode || '').trim()).filter(Boolean))
-      );
-      for (const l of unicas) {
-        try { await getDeptosByLinea(l); } catch {}
+  if (!open || !rows.length) return;
+
+  const unicas = Array.from(
+    new Set(
+      rows
+        .map(r => String(r?.CostingCode ?? '').trim())
+        .filter(Boolean)
+    )
+  );
+
+  if (!unicas.length) return;
+
+  (async () => {
+    for (const linea of unicas) {
+      try {
+        await getDeptosByLinea(linea);
+      } catch (e) {
+        console.error('Error cargando departamentos para línea', linea, e);
       }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+    }
+  })();
+}, [open, rows]);
 
   // 3) Cargar gastos
   useEffect(() => {
@@ -358,18 +382,20 @@ function deptoOptsForRow(lineaCode) {
     setYaTeniaGastoAlAbrir(teniaGasto);
 
     setRows((data.Lineas || []).map((ln) => ({
-      ItemCode: ln.ItemCode || '',
-      Descripcion: ln.ItemDescription || '',
-      Cuenta: str(ln.AccountCode || ln.Cuenta || ''),
+      ItemCode: String(ln.ItemCode || ''),
+      Descripcion: String(ln.ItemDescription || ''),
+      Cuenta: String(ln.AccountCode || ln.Cuenta || ''),
       Cantidad: n2(ln.Quantity ?? 1),
       Precio: n2(ln.UnitPrice ?? 0),
       Descuento: n2(ln.DiscountPercent ?? 0),
-      TaxCode: ln.TaxCode || 'IVA_15',
-      CostingCode: ln.CostingCode || '',
-      CostingCode2: ln.CostingCode2 || '',
-      CostingCode3: ln.CostingCode3 || '',
-      IdSustentoTributario: (ln.U_SYP_CODIDTRD || cabecera.IdSustentoTributario),
-      ConceptoGasto: str(ln.ConceptoGasto || ''),
+      TaxCode: String(ln.TaxCode || 'IVA_15'),
+      CostingCode: String(ln.CostingCode || ''),
+      CostingCode2: String(ln.CostingCode2 || ''),
+      CostingCode3: String(ln.CostingCode3 || ''),
+      IdSustentoTributario: String(
+        ln.U_SYP_CODIDTRD || cabecera.IdSustentoTributario
+      ),
+      ConceptoGasto: String(ln.ConceptoGasto || ''),
     })));
 
     setFinalizado(false);
