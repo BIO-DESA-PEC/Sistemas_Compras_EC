@@ -396,82 +396,99 @@ function CreateProveedorModal({ onClose, onCreated }: CreateProveedorModalProps)
 
   // 🔥 Valida CI/RUC y autollenar nombre (si NO es pasaporte)
   const handleIdProveedor = async (value: string) => {
-    set("IdProveedor", value);
-    setErr("");
+  set("IdProveedor", value);
+  setErr("");
 
-    if (isPassport) {
-      set("U_SYP_BPTD", "P");
+  if (!value.trim()) {
+    set("NombreProveedor", "");
+    return;
+  }
+
+  if (isPassport) {
+    set("U_SYP_BPTD", "P");
+    return;
+  }
+
+  const num = value.trim();
+  let tipoDoc: "C" | "R" | null = null;
+
+  if (/^\d{10}$/.test(num)) {
+    tipoDoc = "C";
+  } else if (/^\d{13}$/.test(num)) {
+    tipoDoc = "R";
+  } else {
+    return;
+  }
+
+  try {
+    const url = `${API_URL}/validar-id?numero=${encodeURIComponent(num)}&tipo=${tipoDoc}`;
+    const res = await fetch(url);
+    const json: any = await res.json().catch(() => null);
+
+    if (!res.ok || !json) {
+      const msg =
+        (json && typeof json.error === "string" && json.error) ||
+        `Error al validar identificación (HTTP ${res.status})`;
+      setErr(msg);
       return;
     }
 
-    const docType = (form.U_SYP_BPTD || "").toUpperCase();
-    if (docType && docType !== "C" && docType !== "R") return;
+    const root = "ok" in json ? json.data : json;
 
-    const num = value.trim();
-    let tipoDoc: "C" | "R" | null = null;
+    if (!root) {
+      setErr("No se recibió información de la identificación");
+      return;
+    }
 
-    if (docType === "C" || docType === "R") {
-      tipoDoc = docType as "C" | "R";
+    let nombreDetectado = "";
+
+    if (tipoDoc === "C") {
+      const r =
+        root?.data?.response ||
+        root?.response ||
+        root?.data?.data?.response ||
+        null;
+
+      if (r) {
+        const nombreCompleto =
+          (r.nombreCompleto as string) ||
+          `${r.nombres || ""} ${r.apellidos || ""}`.trim();
+
+        nombreDetectado = (nombreCompleto || "").trim();
+      }
     } else {
-      if (/^\d{10}$/.test(num)) tipoDoc = "C";
-      if (/^\d{13}$/.test(num)) tipoDoc = "R";
+      const mainArr =
+        root?.data?.data?.main ||
+        root?.data?.main ||
+        root?.main ||
+        [];
+
+      const main = Array.isArray(mainArr) ? mainArr[0] : mainArr;
+
+      if (main) {
+        nombreDetectado =
+          (main.razonSocial as string) ||
+          (main.razon_social as string) ||
+          (main.nombreFantasiaComercial as string) ||
+          (main.nombre_fantasia_comercial as string) ||
+          "";
+
+        nombreDetectado = (nombreDetectado || "").trim();
+      }
     }
-    if (!tipoDoc) return;
 
-    try {
-      const url = `${API_URL}/validar-id?numero=${num}&tipo=${tipoDoc}`;
-      const res = await fetch(url);
-      const json: any = await res.json().catch(() => null);
-
-      if (!res.ok || !json) {
-        const msg =
-          (json && typeof json.error === "string" && json.error) ||
-          `Error al validar identificación (HTTP ${res.status})`;
-        setErr(msg);
-        return;
-      }
-
-      const root = "ok" in json ? json.data : json;
-      if (!root) {
-        setErr("No se recibió información de la identificación");
-        return;
-      }
-
-      let nombreDetectado = "";
-
-      if (tipoDoc === "C") {
-        const r = root.data?.response || root.response || root;
-        if (r) {
-          const nombreCompleto =
-            (r.nombreCompleto as string) || `${r.nombres || ""} ${r.apellidos || ""}`.trim();
-          nombreDetectado = (nombreCompleto || "").trim();
-        }
-      } else {
-        const mainArr = root.data?.main || root.main || [];
-        const main = Array.isArray(mainArr) ? mainArr[0] : mainArr;
-        if (main) {
-          nombreDetectado =
-            (main.razonSocial as string) ||
-            (main.razon_social as string) ||
-            (main.nombreFantasiaComercial as string) ||
-            (main.nombre_fantasia_comercial as string) ||
-            "";
-          nombreDetectado = (nombreDetectado || "").trim();
-        }
-      }
-
-      if (nombreDetectado) {
-        set("NombreProveedor", nombreDetectado);
-        set("U_SYP_BPTD", tipoDoc);
-        setErr("");
-      } else {
-        setErr("No se pudo obtener el nombre desde la API");
-      }
-    } catch (e) {
-      console.error("[Proveedor] error validar-id", e);
-      setErr("Error al validar identificación");
+    if (nombreDetectado) {
+      set("NombreProveedor", nombreDetectado);
+      set("U_SYP_BPTD", tipoDoc);
+      setErr("");
+    } else {
+      setErr("No se pudo obtener el nombre desde la API");
     }
-  };
+  } catch (e) {
+    console.error("[Proveedor] error validar-id", e);
+    setErr("Error al validar identificación");
+  }
+};
 
   const submit: React.FormEventHandler<HTMLFormElement> = async (e) => {
     e.preventDefault();
