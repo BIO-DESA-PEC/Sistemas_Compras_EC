@@ -81,9 +81,12 @@ export default function FacturaPreviewModalArticulo({
     return k && deptosCache[k] ? deptosCache[k] : [];
   }
   function deptoOptsForRow(lineaCode) {
-    const list = deptoListForRow(lineaCode);
-    return (list || []).map(o => ({ value: o.code, label: `${o.code} — ${o.name}` }));
-  }
+  const list = deptoListForRow(lineaCode);
+  return (list || []).map(o => ({
+    value: String(o.code ?? '').trim(),
+    label: `${String(o.code ?? '').trim()} — ${String(o.name ?? '').trim()}`
+  }));
+}
 
   const buildCabecera = (d) => {
     const c = d?.Cabecera || {};
@@ -164,17 +167,21 @@ export default function FacturaPreviewModalArticulo({
     setDraft(data || null);
     setCabecera(buildCabecera(data || null));
     setRows(((data?.Lineas || [])).map((ln) => ({
-      ItemCode: ln.ItemCode || '',
-      Descripcion: ln.ItemDescription || '',
-      Cantidad: n2(ln.Quantity ?? 1),
-      Precio: n2(ln.UnitPrice ?? 0),
-      Descuento: n2(ln.DiscountPercent ?? 0),
-      TaxCode: ln.TaxCode || 'IVA_15',
-      CostingCode:  ln.CostingCode  || '',
-      CostingCode2: ln.CostingCode2 || '',
-      CostingCode3: ln.CostingCode3 || '',
-      IdSustentoTributario: ln.U_SYP_CODIDTRD || (data?.Cabecera?.IdSustentoTributario ?? '01'),
-    })));
+  ItemCode: String(ln.ItemCode || ''),
+  Descripcion: String(ln.ItemDescription || ''),
+  Cantidad: n2(ln.Quantity ?? 1),
+  Precio: n2(ln.UnitPrice ?? 0),
+  Descuento: n2(ln.DiscountPercent ?? 0),
+  TaxCode: String(ln.TaxCode || 'IVA_15'),
+
+  CostingCode:  String(ln.CostingCode  || ''),
+  CostingCode2: String(ln.CostingCode2 || ''),
+  CostingCode3: String(ln.CostingCode3 || ''),
+
+  IdSustentoTributario: String(
+    ln.U_SYP_CODIDTRD || (data?.Cabecera?.IdSustentoTributario ?? '01')
+  ),
+})));
 
     setEst(String(data?.Cabecera?.Serie || ''));
     setPto(String(data?.Cabecera?.PtoEmi || ''));
@@ -212,8 +219,21 @@ export default function FacturaPreviewModalArticulo({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const dimOptsLinea  = useMemo(() => (dLinea || []).map(o => ({ value: o.code, label: `${o.code} — ${o.name}` })), [dLinea]);
-  const dimOptsRegion = useMemo(() => (dRegion || []).map(o => ({ value: o.code, label: `${o.code} — ${o.name}` })), [dRegion]);
+  const dimOptsLinea = useMemo(
+  () => (dLinea || []).map(o => ({
+    value: String(o.code ?? '').trim(),
+    label: `${String(o.code ?? '').trim()} — ${String(o.name ?? '').trim()}`
+  })),
+  [dLinea]
+);
+
+const dimOptsRegion = useMemo(
+  () => (dRegion || []).map(o => ({
+    value: String(o.code ?? '').trim(),
+    label: `${String(o.code ?? '').trim()} — ${String(o.name ?? '').trim()}`
+  })),
+  [dRegion]
+);
 
   const ivaOpts = useMemo(() => IVA_OPTS.map(o => ({ value: o.value, label: o.label })), []);
   const sustentoOpts = useMemo(() => SUSTENTO_OPTS.map(o => ({ value: o.value, label: o.label })), []);
@@ -262,17 +282,19 @@ export default function FacturaPreviewModalArticulo({
       setDraft(j);
       setCabecera(buildCabecera(j));
       setRows((j.Lineas || []).map((ln) => ({
-        ItemCode: ln.ItemCode || '',
-        Descripcion: ln.ItemDescription || '',
-        Cantidad: n2(ln.Quantity ?? 1),
-        Precio: n2(ln.UnitPrice ?? 0),
-        Descuento: n2(ln.DiscountPercent ?? 0),
-        TaxCode: ln.TaxCode || 'IVA_15',
-        CostingCode:  ln.CostingCode  || '',
-        CostingCode2: ln.CostingCode2 || '',
-        CostingCode3: ln.CostingCode3 || '',
-        IdSustentoTributario: ln.U_SYP_CODIDTRD || (j?.Cabecera?.IdSustentoTributario ?? '01'),
-      })));
+      ItemCode: String(ln.ItemCode || ''),
+      Descripcion: String(ln.ItemDescription || ''),
+      Cantidad: n2(ln.Quantity ?? 1),
+      Precio: n2(ln.UnitPrice ?? 0),
+      Descuento: n2(ln.DiscountPercent ?? 0),
+      TaxCode: String(ln.TaxCode || 'IVA_15'),
+      CostingCode:  String(ln.CostingCode  || ''),
+      CostingCode2: String(ln.CostingCode2 || ''),
+      CostingCode3: String(ln.CostingCode3 || ''),
+      IdSustentoTributario: String(
+        ln.U_SYP_CODIDTRD || (j?.Cabecera?.IdSustentoTributario ?? '01')
+      ),
+    })));
 
       const unicas = Array.from(
         new Set((j.Lineas || []).map(r => String(r.CostingCode || '').trim()).filter(Boolean))
@@ -603,7 +625,11 @@ export default function FacturaPreviewModalArticulo({
                           <div>
                             <SearchSelect
                               value={ln.CostingCode3}
-                              onChange={(v) => updateRow(i, { CostingCode3: v })}
+                              onChange={async (v) => {
+                                const val = String(v || '');
+                                updateRow(i, { CostingCode: val, CostingCode3: '' });
+                                try { await getDeptosByLinea(val); } catch (e) { console.error(e); }
+                              }}
                               options={deptoOptsForRow(ln.CostingCode)}
                               placeholder={ln.CostingCode ? "Departamento" : "Primero seleccione línea"}
                               disabled={readOnlyTotal || !ln.CostingCode}
