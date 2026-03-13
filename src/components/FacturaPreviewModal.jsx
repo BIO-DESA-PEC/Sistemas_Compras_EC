@@ -905,22 +905,10 @@ function deptoOptsForRow(lineaCode) {
 
                       {/* DEPARTAMENTO (D3) */}
                       <div>
-                        <SearchSelect
-                          value={ln.CostingCode3}
-                          onChange={(v) => {
-                            updateRow(i, { CostingCode3: v });
-                            applyToEmpty("CostingCode3", v);
-                          }}
-                          options={deptoOptionsSafe}
-                          placeholder={ln.CostingCode ? "Seleccione departamento" : "Primero seleccione línea"}
-                          disabled={readOnlyTotal || !ln.CostingCode}
-                          title={titleFromDim(ln.CostingCode3, deptoListForRow(ln.CostingCode))}
-                          searchPlaceholder="Buscar departamento..."
-                          maxHeight={320}
-                          mode="dialog"
-                          dialogTitle="Seleccionar departamento"
-                          inputClassName={styles.ssInput}
-                        />
+                        <input
+  readOnly
+  value={titleFromDim(ln.CostingCode3, deptoListForRow(ln.CostingCode))}
+/>
                       </div>
 
                       {/* SUSTENTO (bloqueado si ya está lleno) */}
