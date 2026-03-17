@@ -24,15 +24,20 @@ export default async function OCListPage({ searchParams }) {
     items = [];
   }
 
-  // Paginación (frontend)
   const total = items.length;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const safePage = Math.min(currentPage, totalPages);
   const start = (safePage - 1) * PAGE_SIZE;
   const paginated = items.slice(start, start + PAGE_SIZE);
 
-  // Helpers
-  const estadoOpts = ["Todos", "GENERADA", "PENDIENTE FACTURAR","PROCESADA", "ANULADA", "RECHAZADA"];
+  const estadoOpts = [
+    "Todos",
+    "GENERADA",
+    "PENDIENTE FACTURAR",
+    "PROCESADA",
+    "ANULADA",
+    "RECHAZADA",
+  ];
 
   const linkFor = (p) => {
     const qs = new URLSearchParams();
@@ -55,8 +60,10 @@ export default async function OCListPage({ searchParams }) {
     const max = totalPages;
     const curr = safePage;
     const out = [];
+
     const add = (n, label) =>
       out.push({ n, label: label || String(n), active: n === curr });
+
     if (max <= 7) {
       for (let n = 1; n <= max; n++) add(n);
     } else {
@@ -76,7 +83,6 @@ export default async function OCListPage({ searchParams }) {
       <div className={styles.header}>
         <h1 className={styles.title}>Órdenes de compra</h1>
 
-        {/* Filtros de estado (chips) */}
         <div className={styles.filters}>
           {estadoOpts.map((est) => (
             <Link
@@ -88,14 +94,13 @@ export default async function OCListPage({ searchParams }) {
             </Link>
           ))}
 
-          {/* Búsqueda: preserva el estado seleccionado */}
           <form className={styles.search} action="/ordenes" method="get">
             {estado && estado !== "Todos" && (
               <input type="hidden" name="estado" value={estado} />
             )}
             <input
               name="q"
-              placeholder="Buscar por #OC o #Solicitud"
+              placeholder="Buscar por #OC, #Solicitud o #PreOC"
               defaultValue={q}
             />
             <button type="submit">Filtrar</button>
@@ -110,6 +115,8 @@ export default async function OCListPage({ searchParams }) {
           <div className={`${styles.row} ${styles.headerRow}`}>
             <div>#OC</div>
             <div>#Solicitud</div>
+            <div>#Pre-OC</div>
+            <div>Solicitó</div>
             <div>Fecha</div>
             <div>Estado</div>
             <div className={styles.num}>Total</div>
@@ -119,146 +126,87 @@ export default async function OCListPage({ searchParams }) {
           {paginated.length === 0 ? (
             <div className={styles.empty}>No hay órdenes para mostrar.</div>
           ) : (
-            paginated.map((r) => {
-              // —— NUEVO: “EN APROBACIÓN” si la OC está en GENERADA pero hay aprobador/nivel pendiente (del backend)
-              const enAprob =
-                (r?.Estado === "GENERADA") &&
-                (!!r?.AprobadorPendiente || !!r?.NivelPendiente);
+            paginated.map((r) => (
+              <div key={r.IdOC} className={styles.row}>
+                <Link className={styles.link} href={`/ordenes/${r.IdOC}`}>
+                  #{r.IdOC}
+                </Link>
 
-              const badgeLabel = enAprob ? "EN APROBACIÓN" : (r?.Estado || "—");
+                <span className={styles.linkMuted}>
+                  {r.IdSolicitud ? `#${r.IdSolicitud}` : "—"}
+                </span>
 
-              // usa un color propio si existe la clase; si no, cae al estilo de GENERADA
-              const badgeClass =
-                enAprob && styles.state_en_aprobacion
-                  ? styles.state_en_aprobacion
-                  : styles[`state_${(r?.Estado || "").toLowerCase()}`] ||
-                    styles.state_generada;
+                <span className={styles.linkMuted}>
+                  {r.IdPreOC ? `#${r.IdPreOC}` : "—"}
+                </span>
 
-              return (
-                <div key={r.IdOC} className={styles.row}>
-                  <Link className={styles.link} href={`/ordenes/${r.IdOC}`}>
-                    #{r.IdOC}
-                  </Link>
-                  <span className={styles.linkMuted}>#{r.IdSolicitud}</span>
-                  <div>{r.Fecha ?? "—"}</div>
+                <div>{r.SolicitanteNombre || "—"}</div>
 
-                  {/* ===== Estado + subinfo de aprobación ===== */}
-                  {/* === Estado === */}
-                  <div className={styles.stateCell}>
-                    {(() => {
-                      const visual = (r.EstadoVisual || r.Estado || "—");
-                      const key = visual.toLowerCase().replaceAll(" ", "_"); // ej: pendiente_facturar
-                      const badgeClass = styles[`state_${key}`] || styles.state_generada;
+                <div>{r.Fecha ?? "—"}</div>
 
-                      return (
-                        <>
-                          <div className={`${styles.badge} ${badgeClass}`}>{visual}</div>
-                          {/* subnota solo si viene aprobador/nivel */}
-                          {r.EnAprobacion ? (
-                            <div className={styles.subnote}>
-                              En aprobación — <b>{r.AprobadorPendiente || r.NivelPendiente || "pendiente"}</b>
-                            </div>
-                          ) : null}
-                        </>
-                      );
-                    })()}
-                  </div>
-                  <div className={styles.num}>
-                    {Number(r.Total || 0).toLocaleString()}
-                  </div>
+                <div className={styles.stateCell}>
+                  {(() => {
+                    const visual = r.EstadoVisual || r.Estado || "—";
+                    const key = visual.toLowerCase().replaceAll(" ", "_");
+                    const badgeClass =
+                      styles[`state_${key}`] || styles.state_generada;
 
-                  {/* Acciones */}
-                  <div className={styles.actions}>
+                    return (
+                      <>
+                        <div className={`${styles.badge} ${badgeClass}`}>
+                          {visual}
+                        </div>
+                        {r.EnAprobacion ? (
+                          <div className={styles.subnote}>
+                            En aprobación —{" "}
+                            <b>{r.AprobadorPendiente || r.NivelPendiente || "pendiente"}</b>
+                          </div>
+                        ) : null}
+                      </>
+                    );
+                  })()}
+                </div>
+
+                <div className={styles.num}>
+                  {Number(r.Total || 0).toLocaleString()}
+                </div>
+
+                <div className={styles.actions}>
                   {r.PendienteFacturar ? (
-                  <Link
-                    href={`/ordenes/${r.IdOC}?facturar=1`}
-                    className={styles.facturarBtn}
-                    aria-label={`Facturar OC #${r.IdOC}`}
-                    title="Facturar"
-                  >
-                    {/* Ícono recibo/factura */}
-                    <svg
-                      className={styles.icon}
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      aria-hidden="true"
+                    <Link
+                      href={`/ordenes/${r.IdOC}?facturar=1`}
+                      className={styles.facturarBtn}
+                      aria-label={`Facturar OC #${r.IdOC}`}
+                      title="Facturar"
                     >
-                      <path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3z" stroke="currentColor" strokeWidth="1.5"/>
-                      <path d="M8.5 8H15.5M8.5 12H15.5M8.5 16H13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                    </svg>
-                    
-                  </Link>
-                ) : r.Estado === "GENERADA" ? (
-                  // LÁPIZ (editar)
-                  <Link
-                    href={`/ordenes/${r.IdOC}`}
-                    className={styles.iconBtn}
-                    aria-label={`Editar OC #${r.IdOC}`}
-                    title="Editar OC"
-                  >
-                        {/* lápiz */}
-                        <svg
-                          className={styles.icon}
-                          width="18"
-                          height="18"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                        >
-                          <path
-                            d="M3 17.25V21h3.75l11.06-11.06-3.75-3.75L3 17.25z"
-                            stroke="currentColor"
-                            strokeWidth="1.5"
-                            fill="currentColor"
-                          />
-                          <path
-                            d="M14.06 6.94l3.75 3.75 1.06-1.06a1.5 1.5 0 0 0 0-2.12l-1.63-1.63a1.5 1.5 0 0 0-2.12 0l-1.06 1.06z"
-                            fill="currentColor"
-                          />
-                        </svg>
-                      </Link>
-                    ) : (
-                      <Link
-                        href={`/ordenes/${r.IdOC}`}
-                        className={`${styles.iconBtn} ${styles.ghost}`}
-                        aria-label={`Ver OC #${r.IdOC}`}
-                        title="Ver OC"
+                      <svg
+                        className={styles.icon}
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        aria-hidden="true"
                       >
-                        {/* ojo */}
-                        <svg
-                          className={styles.icon}
-                          width="18"
-                          height="18"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                        >
-                          <path
-                            d="M1.5 12S5.5 5.5 12 5.5 22.5 12 22.5 12 18.5 18.5 12 18.5 1.5 12 1.5 12Z"
-                            stroke="currentColor"
-                            strokeWidth="1.5"
-                          />
-                          <circle
-                            cx="12"
-                            cy="12"
-                            r="3.25"
-                            stroke="currentColor"
-                            strokeWidth="1.5"
-                          />
-                        </svg>
-                      </Link>
-                    )}
-
-                    {/* PDF */}
-                    <a
-                      href={`https://back-compras-ec.onrender.com/api/oc/${r.IdOC}/pdf`}
-                      target="_blank"
-                      rel="noopener"
-                      className={`${styles.iconBtn} ${styles.ghost}`}
-                      aria-label={`Descargar PDF OC #${r.IdOC}`}
-                      title="PDF"
+                        <path
+                          d="M6 3h12v18l-3-2-3 2-3-2-3 2V3z"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                        />
+                        <path
+                          d="M8.5 8H15.5M8.5 12H15.5M8.5 16H13"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                    </Link>
+                  ) : r.Estado === "GENERADA" ? (
+                    <Link
+                      href={`/ordenes/${r.IdOC}`}
+                      className={styles.iconBtn}
+                      aria-label={`Editar OC #${r.IdOC}`}
+                      title="Editar OC"
                     >
-                      {/* ícono descargar */}
                       <svg
                         className={styles.icon}
                         width="18"
@@ -267,47 +215,98 @@ export default async function OCListPage({ searchParams }) {
                         fill="none"
                       >
                         <path
-                          d="M12 3v10m0 0l-4-4m4 4l4-4"
+                          d="M3 17.25V21h3.75l11.06-11.06-3.75-3.75L3 17.25z"
                           stroke="currentColor"
                           strokeWidth="1.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
+                          fill="currentColor"
                         />
-                        <path d="M4 17h16v3H4z" fill="currentColor" />
+                        <path
+                          d="M14.06 6.94l3.75 3.75 1.06-1.06a1.5 1.5 0 0 0 0-2.12l-1.63-1.63a1.5 1.5 0 0 0-2.12 0l-1.06 1.06z"
+                          fill="currentColor"
+                        />
                       </svg>
-                    </a>
-                  </div>
+                    </Link>
+                  ) : (
+                    <Link
+                      href={`/ordenes/${r.IdOC}`}
+                      className={`${styles.iconBtn} ${styles.ghost}`}
+                      aria-label={`Ver OC #${r.IdOC}`}
+                      title="Ver OC"
+                    >
+                      <svg
+                        className={styles.icon}
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                      >
+                        <path
+                          d="M1.5 12S5.5 5.5 12 5.5 22.5 12 22.5 12 18.5 18.5 12 18.5 1.5 12 1.5 12Z"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                        />
+                        <circle
+                          cx="12"
+                          cy="12"
+                          r="3.25"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                        />
+                      </svg>
+                    </Link>
+                  )}
+
+                  <a
+                    href={`https://back-compras-ec.onrender.com/api/oc/${r.IdOC}/pdf`}
+                    target="_blank"
+                    rel="noopener"
+                    className={`${styles.iconBtn} ${styles.ghost}`}
+                    aria-label={`Descargar PDF OC #${r.IdOC}`}
+                    title="PDF"
+                  >
+                    <svg
+                      className={styles.icon}
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                    >
+                      <path
+                        d="M12 3v10m0 0l-4-4m4 4l4-4"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      <path d="M4 17h16v3H4z" fill="currentColor" />
+                    </svg>
+                  </a>
                 </div>
-              );
-            })
+              </div>
+            ))
           )}
         </div>
 
-        {/* Paginador */}
         {total > 0 && (
           <div className={styles.pager}>
             <span className={styles.pagerInfo}>
-              Mostrando {start + 1}–{Math.min(total, start + paginated.length)} de{" "}
-              {total}
+              Mostrando {start + 1}–{Math.min(total, start + paginated.length)} de {total}
             </span>
             <div className={styles.pagerNav}>
               <Link
-                className={`${styles.pageBtn} ${
-                  safePage === 1 ? styles.disabled : ""
-                }`}
+                className={`${styles.pageBtn} ${safePage === 1 ? styles.disabled : ""}`}
                 href={safePage === 1 ? "#" : linkFor(safePage - 1)}
                 aria-disabled={safePage === 1}
               >
                 «
               </Link>
+
               {pageNumbers().map((p, i) =>
                 p.n ? (
                   <Link
                     key={i}
                     href={linkFor(p.n)}
-                    className={`${styles.pageBtn} ${
-                      p.active ? styles.pageActive : ""
-                    }`}
+                    className={`${styles.pageBtn} ${p.active ? styles.pageActive : ""}`}
                   >
                     {p.label}
                   </Link>
@@ -317,10 +316,9 @@ export default async function OCListPage({ searchParams }) {
                   </span>
                 )
               )}
+
               <Link
-                className={`${styles.pageBtn} ${
-                  safePage === totalPages ? styles.disabled : ""
-                }`}
+                className={`${styles.pageBtn} ${safePage === totalPages ? styles.disabled : ""}`}
                 href={safePage === totalPages ? "#" : linkFor(safePage + 1)}
                 aria-disabled={safePage === totalPages}
               >

@@ -41,13 +41,7 @@
 /* 6 columnas: #OC | #Solicitud | Fecha | Estado | Total | Acciones */
 .row{
   display:grid;
-  grid-template-columns:
-    100px                      /* #OC (fija) */
-    110px                     /* #Solicitud (fija) */
-    minmax(100px, 0.9fr)        /* Fecha absorbe espacio pero con mínimo razonable */
-    max-content               /* Estado se ajusta al pill (no se ensancha) */
-    minmax(110px, 120px)      /* Total, ancho controlado */
-    110px;                     /* Acciones, fijo y centrado */
+  grid-template-columns: 90px 110px 110px 1.2fr 1.3fr 1.2fr 100px 120px;                   /* Acciones, fijo y centrado */
   column-gap:16px;
   padding:12px 14px;
   border-bottom:1px solid var(--border);
