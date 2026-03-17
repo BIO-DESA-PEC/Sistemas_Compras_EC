@@ -252,10 +252,19 @@ export async function getOCApprovalStatus(idOC) {
  * (NUEVO) Preview de prefactura SAP
  * ================================ */
 export async function previewPrefacturaOC(idOC, payload) {
-  // Usa helpers estrictos para garantizar JSON válido
-  return fetchJSONBody(`/api/oc/${idOC}/prefactura/preview`, "POST", payload);
-}
+  const res = await fetch(`${API_BASE}/api/oc/${idOC}/prefactura/preview`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+    cache: "no-store",
+  });
 
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error || "Error al previsualizar prefactura");
+  return data;
+}
 
 /* ================================
  * (NUEVO) Pre-Órdenes de Compra
@@ -366,15 +375,28 @@ export function downloadFacturaAdjuntoOC(idOc, idAdj) {
 }
 
 export async function getFacturaInfoOC(idOC) {
-  return fetchJSON(`/api/oc/${idOC}/factura-info`);
+  const res = await fetch(`${API_BASE}/api/oc/${idOC}/factura-info`, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error || "Error al obtener factura-info");
+  return data;
 }
 
 export async function saveFacturaInfoOC(idOC, payload) {
-  return fetchJSON(`/api/oc/${idOC}/factura-info`, {
+  const res = await fetch(`${API_BASE}/api/oc/${idOC}/factura-info`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(payload),
   });
+
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error || "Error al guardar factura-info");
+  return data;
 }
 // ================================
 // PROVEEDORES (SAP) - NUEVO MODULO
@@ -435,3 +457,4 @@ export async function createPreOCDirect({ userId, departamentoId, tipo, comentar
   if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
   return data;
 }
+

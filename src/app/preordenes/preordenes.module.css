@@ -311,3 +311,276 @@
     min-width: 1220px;
   }
 }
+
+/* =========================
+   BOTONES
+========================= */
+.primary {
+  appearance: none;
+  border: none;
+  outline: none;
+  cursor: pointer;
+  border-radius: 14px;
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  transition: all 0.22s ease;
+  background: linear-gradient(135deg, #0f766e 0%, #14b8a6 100%);
+  color: #ffffff;
+  box-shadow: 0 10px 24px rgba(20, 184, 166, 0.22);
+}
+
+.primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 28px rgba(20, 184, 166, 0.28);
+  filter: brightness(1.03);
+}
+
+.primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.primary:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.secondary {
+  appearance: none;
+  border: 1px solid #d1d5db;
+  outline: none;
+  cursor: pointer;
+  border-radius: 14px;
+  padding: 12px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  transition: all 0.22s ease;
+  background: #ffffff;
+  color: #374151;
+}
+
+.secondary:hover:not(:disabled) {
+  background: #f9fafb;
+  border-color: #9ca3af;
+}
+
+.secondary:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+/* =========================
+   MODAL
+========================= */
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: fadeIn 0.18s ease;
+}
+
+.modalCard {
+  width: 100%;
+  max-width: 560px;
+  background: #ffffff;
+  border-radius: 24px;
+  box-shadow:
+    0 24px 60px rgba(15, 23, 42, 0.22),
+    0 8px 24px rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  overflow: hidden;
+  animation: scaleIn 0.2s ease;
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 24px 18px 24px;
+  border-bottom: 1px solid #eef2f7;
+  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+}
+
+.modalTitle {
+  font-size: 20px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+
+.modalX {
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 12px;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.modalX:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.modalBody {
+  padding: 24px;
+}
+
+/* =========================
+   CONTENIDO INTERNO
+========================= */
+.modalGrid {
+  display: grid;
+  gap: 18px;
+}
+
+.modalLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modalLabel span {
+  font-size: 14px;
+  font-weight: 700;
+  color: #334155;
+}
+
+.modalSelect,
+.modalTextarea {
+  width: 100%;
+  border: 1px solid #dbe3ee;
+  border-radius: 14px;
+  background: #f8fafc;
+  color: #0f172a;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.modalSelect {
+  height: 48px;
+  padding: 0 14px;
+}
+
+.modalTextarea {
+  min-height: 120px;
+  resize: vertical;
+  padding: 14px;
+  line-height: 1.5;
+}
+
+.modalSelect:focus,
+.modalTextarea:focus {
+  border-color: #14b8a6;
+  background: #ffffff;
+  box-shadow: 0 0 0 4px rgba(20, 184, 166, 0.12);
+}
+
+.modalSelect:disabled,
+.modalTextarea:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* =========================
+   ERROR / HINT / FOOTER
+========================= */
+.modalError {
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.modalFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+.modalHint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #64748b;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+
+/* =========================
+   ANIMACIONES
+========================= */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* =========================
+   RESPONSIVE
+========================= */
+@media (max-width: 640px) {
+  .modalBackdrop {
+    padding: 14px;
+    align-items: flex-end;
+  }
+
+  .modalCard {
+    max-width: 100%;
+    border-radius: 22px 22px 0 0;
+  }
+
+  .modalHeader {
+    padding: 18px 18px 14px 18px;
+  }
+
+  .modalBody {
+    padding: 18px;
+  }
+
+  .modalTitle {
+    font-size: 18px;
+  }
+
+  .modalFooter {
+    flex-direction: column-reverse;
+  }
+
+  .modalFooter button {
+    width: 100%;
+  }
+}

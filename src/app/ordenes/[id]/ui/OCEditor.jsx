@@ -36,6 +36,7 @@ const IVA_PCT_DEFAULT = 15;
 const EMPTY_ROW = {
   NumeroArticulo: "",
   Proveedor: "",
+  ProveedorCardCode: "",
   FechaNecesaria: "",
   Cantidad: 0,
   Precio: 0,
@@ -110,11 +111,23 @@ export default function OCEditor({ oc, detalleInicial }) {
   const tipoOC = useMemo(() => (oc?.Tipo || "").trim().toUpperCase(), [oc?.Tipo]);
   const isServicio = tipoOC === "SERVICIO";
   const isArticulo = tipoOC === "ARTICULO";
-
+const [factCardCode, setFactCardCode] = useState("");
+const [factProveedorNom, setFactProveedorNom] = useState("");
   // --------------------------------
   // Estado base
   // --------------------------------
-  const [detalle, setDetalle] = useState((detalleInicial || []).map(recalcRow));
+  const [detalle, setDetalle] = useState(
+  (detalleInicial || []).map((d) =>
+    recalcRow({
+      ...d,
+      ProveedorCardCode:
+        d.ProveedorCardCode ??
+        d.CodigoSAP ??
+        d.CardCode ??
+        "",
+    })
+  )
+);
   const [estado, setEstado] = useState(oc.Estado);
 
   // ✅ NUEVO: adjuntos de factura
@@ -203,7 +216,18 @@ export default function OCEditor({ oc, detalleInicial }) {
   // Efectos: recargar datos al cambiar OC
   // --------------------------------
   useEffect(() => {
-    setDetalle((detalleInicial || []).map(recalcRow));
+    setDetalle(
+  (detalleInicial || []).map((d) =>
+    recalcRow({
+      ...d,
+      ProveedorCardCode:
+        d.ProveedorCardCode ??
+        d.CodigoSAP ??
+        d.CardCode ??
+        "",
+    })
+  )
+);
     setEstado(oc.Estado);
     setDiasPago(oc.DiasPago ?? 0);
 
@@ -258,27 +282,25 @@ export default function OCEditor({ oc, detalleInicial }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     // ✅ NUEVO: cargar Est/Pto/Sec guardados para esta OC
   (async () => {
-    try {
-      if (!oc?.IdOC) return;
-      const r = await getFacturaInfoOC(oc.IdOC);
-      const info = r?.data || null;
+  try {
+    if (!oc?.IdOC) return;
+    const r = await getFacturaInfoOC(oc.IdOC);
+    const info = r?.data || null;
 
-      if (info) {
-        // precarga para que NO te vuelva a pedir
-        setFactEstable(info.Establecimiento || "");
-        setFactPtoEmi(info.PuntoEmision || "");
-        setFactSecu(info.Secuencial || "");
+    if (info) {
+      setFactEstable(info.Establecimiento || "");
+      setFactPtoEmi(info.PuntoEmision || "");
+      setFactSecu(info.Secuencial || "");
+      setFactCardCode(info.ProveedorCardCode || "");
 
-        // opcional: también para modal de subida (si quieres)
-        setUpEst(info.Establecimiento || "");
-        setUpPto(info.PuntoEmision || "");
-        setUpSec(info.Secuencial || "");
-      }
-    } catch (e) {
-      console.warn("No pude cargar factura-info", e);
+      setUpEst(info.Establecimiento || "");
+      setUpPto(info.PuntoEmision || "");
+      setUpSec(info.Secuencial || "");
     }
-  })();
-
+  } catch (e) {
+    console.warn("No pude cargar factura-info", e);
+  }
+})();
   }, [oc?.IdOC]);
 
   // ✅ NUEVO: cargar adjuntos cada vez que cambie la OC (o el estado)
@@ -465,6 +487,13 @@ export default function OCEditor({ oc, detalleInicial }) {
   // ================================================
   // Facturación
   // ================================================
+ const getProveedorPrincipal = useCallback(() => {
+  const fila = (detalle || []).find((x) => (x?.Proveedor || "").trim());
+  return {
+    nombre: fila?.Proveedor || "",
+    cardCode: fila?.ProveedorCardCode || "",
+  };
+}, [detalle]);
   const mandarAFacturar = useCallback(async (modo = "NORMAL") => {
   try {
     const st = await getOCApprovalStatus(oc.IdOC);
@@ -484,10 +513,19 @@ export default function OCEditor({ oc, detalleInicial }) {
 
   setFactTipo(t);
 
-  // 🔹 NUEVO: si ya tengo datos guardados, voy directo al preview
+  const prov = getProveedorPrincipal();
+
+  if (!factProveedorNom && prov?.nombre) {
+    setFactProveedorNom(prov.nombre);
+  }
+  if (!factCardCode && prov?.cardCode) {
+    setFactCardCode(prov.cardCode);
+  }
+
   const est = (factEstable || "").trim();
   const pto = (factPtoEmi || "").trim();
   const sec = (factSecu || "").trim();
+  const card = (factCardCode || prov?.cardCode || "").trim();
 
   if (est && pto && sec) {
     setSending(true);
@@ -496,6 +534,7 @@ export default function OCEditor({ oc, detalleInicial }) {
         Establecimiento: est,
         PuntoEmision: pto,
         Secuencial: sec,
+        CardCode: card || "",
       });
 
       if (prev && prev.error) throw new Error(prev.error);
@@ -516,9 +555,7 @@ export default function OCEditor({ oc, detalleInicial }) {
   }
 
   setShowFacturaForm(true);
-}, [oc.IdOC, oc?.Tipo, factEstable, factPtoEmi, factSecu]);
-
-
+}, [oc.IdOC, oc?.Tipo, factEstable, factPtoEmi, factSecu, factCardCode, factProveedorNom, getProveedorPrincipal]);
   // Guardar encabezado de pago
   const guardarPagoEncabezado = useCallback(async () => {
     try {
@@ -536,6 +573,18 @@ export default function OCEditor({ oc, detalleInicial }) {
   const pto = (factPtoEmi || "").trim();
   const sec = (factSecu || "").trim();
 
+  const prov = getProveedorPrincipal();
+  const card = (factCardCode || prov?.cardCode || "").trim();
+  const provNom = (factProveedorNom || prov?.nombre || "").trim();
+
+  console.log("DEBUG FACTURA:", {
+    est,
+    pto,
+    sec,
+    factCardCode,
+    proveedor: prov,
+  });
+
   if (!est || !pto || !sec) {
     alert("Completa Establecimiento, Punto de Emisión y Secuencial.");
     return;
@@ -545,17 +594,18 @@ export default function OCEditor({ oc, detalleInicial }) {
   try {
     setShowFacturaForm(false);
 
-    // 🔹 NUEVO: guardar en tabla ANTES del preview
     await saveFacturaInfoOC(oc.IdOC, {
       Establecimiento: est,
       PuntoEmision: pto,
       Secuencial: sec,
+      ProveedorCardCode: card || "",
     });
 
     const prev = await previewPrefacturaOC(oc.IdOC, {
       Establecimiento: est,
       PuntoEmision: pto,
       Secuencial: sec,
+      CardCode: card || "",
     });
 
     if (prev && prev.error) throw new Error(prev.error);
@@ -565,6 +615,8 @@ export default function OCEditor({ oc, detalleInicial }) {
       return;
     }
 
+    setFactCardCode(prev?.Cabecera?.CardCode || card || "");
+    setFactProveedorNom(prev?.Cabecera?.CardName || provNom || "");
     setPreviewData(prev);
     setPreviewOpen(true);
   } catch (e) {
@@ -572,24 +624,21 @@ export default function OCEditor({ oc, detalleInicial }) {
   } finally {
     setSending(false);
   }
-}, [factEstable, factPtoEmi, factSecu, oc.IdOC]);
-
-
+}, [factEstable, factPtoEmi, factSecu, factCardCode, factProveedorNom, getProveedorPrincipal, oc.IdOC]);
   // Usa el borrador encontrado y marca la OC como PROCESADA
   const handleUseDraft = useCallback(async () => {
   try {
-    // Si aún no está procesada, la marcamos
     if (estado !== "PROCESADA") {
       await updateOCState(oc.IdOC, { estado: "PROCESADA" });
       setEstado("PROCESADA");
     }
 
-    // 🔹 NUEVO: asegurar que quede guardado (por seguridad)
     if (factEstable && factPtoEmi && factSecu) {
       await saveFacturaInfoOC(oc.IdOC, {
         Establecimiento: factEstable,
         PuntoEmision: factPtoEmi,
         Secuencial: factSecu,
+        ProveedorCardCode: factCardCode || "",
       });
     }
 
@@ -600,17 +649,13 @@ export default function OCEditor({ oc, detalleInicial }) {
     setPreviewOpen(false);
     setPreviewData(null);
   }
-}, [estado, oc.IdOC, factEstable, factPtoEmi, factSecu]);
-
+}, [estado, oc.IdOC, factEstable, factPtoEmi, factSecu, factCardCode]);
 
   // Cancelar formulario de prefactura
   const cancelarPrefactura = useCallback(() => {
-    setShowFacturaForm(false);
-    setFactTipo(null);
-    setFactEstable("");
-    setFactPtoEmi("");
-    setFactSecu("");
-  }, []);
+  setShowFacturaForm(false);
+  setFactTipo(null);
+}, []);
 
   // ✅ NUEVO: abrir modal subir factura (autollenar si tienes previewData)
   const openUploadFactura = useCallback(() => {
@@ -855,11 +900,23 @@ export default function OCEditor({ oc, detalleInicial }) {
                     <span className={styles.inputReadonly}>{r.Proveedor || "—"}</span>
                   ) : (
                     <div className={styles.proveedorWrapper}>
-                      <ProveedorPicker
-                        disabled={!editable}
-                        value={r.Proveedor || ""}
-                        onChange={(nombre) => onChangeCell(i, "Proveedor", nombre)}
-                      />
+                     <ProveedorPicker
+  disabled={!editable}
+  value={r.Proveedor || ""}
+  onChange={(nombre, proveedor) => {
+    console.log("Proveedor seleccionado OC:", { nombre, proveedor });
+
+    setDetalle((prev) => {
+      const rows = [...prev];
+      rows[i] = recalcRow({
+        ...rows[i],
+        Proveedor: nombre || "",
+        ProveedorCardCode: proveedor?.CodigoSAP || "",
+      });
+      return rows;
+    });
+  }}
+/>
                     </div>
                   )}
                 </td>
