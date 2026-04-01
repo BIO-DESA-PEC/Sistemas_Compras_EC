@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import styles from "./solicitudesMensuales.module.css";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5000";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "https://back-compras-ec.onrender.com";
 
 const CATEGORIAS = [
   "CAFETERIA",
