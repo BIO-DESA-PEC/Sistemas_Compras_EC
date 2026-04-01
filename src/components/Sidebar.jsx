@@ -12,6 +12,8 @@ import {
   ShieldCheck,
   LogOut,
   Truck,
+  CalendarRange,
+  Settings2,
 } from "lucide-react";
 import styles from "./sidebar.module.css";
 
@@ -83,23 +85,28 @@ export default function Sidebar({ session, user, collapsed }) {
         ) : isUsuario ? (
           /* ✅ USUARIO (RolId 3): SOLO Dashboard + Nueva solicitud + Solicitudes */
           <>
-            <div className={styles.sectionLabel}>General</div>
-            <a href="/dashboard" className={styles.item}>
-              <LayoutDashboard size={18} />
-              <span>Dashboard</span>
-            </a>
+  <div className={styles.sectionLabel}>General</div>
+  <a href="/dashboard" className={styles.item}>
+    <LayoutDashboard size={18} />
+    <span>Dashboard</span>
+  </a>
 
-            <div className={styles.sectionLabel}>Compras</div>
-            <a href="/solicitudes/new" className={styles.item}>
-              <ShoppingCart size={18} />
-              <span>Nueva solicitud</span>
-            </a>
+  <div className={styles.sectionLabel}>Compras</div>
+  <a href="/solicitudes/new" className={styles.item}>
+    <ShoppingCart size={18} />
+    <span>Nueva solicitud</span>
+  </a>
 
-            <a href="/solicitudes" className={styles.item}>
-              <ListChecks size={18} />
-              <span>Solicitudes</span>
-            </a>
-          </>
+  <a href="/solicitudes-mensuales" className={styles.item}>
+    <CalendarRange size={18} />
+    <span>Solicitudes mensuales</span>
+  </a>
+
+  <a href="/solicitudes" className={styles.item}>
+    <ListChecks size={18} />
+    <span>Solicitudes</span>
+  </a>
+</>
         ) : (
           /* ✅ RESTO (Admin, Compras, Jefe TI, etc.) */
           <>
@@ -116,7 +123,22 @@ export default function Sidebar({ session, user, collapsed }) {
               <ShoppingCart size={18} />
               <span>Nueva solicitud</span>
             </a>
-
+            <a href="/solicitudes-mensuales" className={styles.item}>
+  <CalendarRange size={18} />
+  <span>Solicitudes mensuales</span>
+</a>
+{(isAdmin || isCompras) && (
+  <a href="/plantillas-mensuales" className={styles.item}>
+    <Settings2 size={18} />
+    <span>Plantillas mensuales</span>
+  </a>
+)}
+{(isAdmin || isCompras) && (
+  <a href="/reportes" className={styles.item}>
+    <FileText size={18} />
+    <span>Reportes</span>
+  </a>
+)}
             <a href="/solicitudes" className={styles.item}>
               <ListChecks size={18} />
               <span>Solicitudes</span>

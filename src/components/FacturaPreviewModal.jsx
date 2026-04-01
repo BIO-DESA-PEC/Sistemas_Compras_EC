@@ -14,12 +14,12 @@ const SUSTENTO_OPTS = [
   { value: '02', label: '02 - Reembolsos' },
 ];
 
-function n2(v){
+function n2(v) {
   if (typeof v === 'string') v = v.replace(',', '.');
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }
-function str(v){ return (v ?? '').toString(); }
+function str(v) { return (v ?? '').toString(); }
 const t = (v) => String(v ?? '').trim();
 
 function titleFromOpts(value, opts = []) {
@@ -28,6 +28,7 @@ function titleFromOpts(value, opts = []) {
   const found = opts.find(o => String(o.value) === v);
   return found ? found.label : v;
 }
+
 function titleFromDim(code, list = []) {
   const v = String(code ?? '').trim();
   if (!v) return '';
@@ -57,21 +58,30 @@ export default function FacturaPreviewModal({
 
   const rol = String(rolNombre || "").toUpperCase();
   const isAdmin = Number(rolId) === 1 || rol === "ADMINISTRADOR";
-  const isData  = Number(rolId) === 5 || rol === "DATA";
+  const isData = Number(rolId) === 5 || rol === "DATA";
+  const isCompras = Number(rolId) === 6 || rol === "COMPRAS";
+
   const canEditGasto = isAdmin || isData;
+  const canEditDimensiones = isAdmin || isData;
+  const requiereDimensiones = isAdmin || isData;
+
+  const [finalizado, setFinalizado] = useState(false);
+  const [yaTeniaGastoAlAbrir, setYaTeniaGastoAlAbrir] = useState(false);
+
+  const readOnlyTotal = (modo === "facturas_sap") && (finalizado || yaTeniaGastoAlAbrir);
+  const isLock = (modo === 'facturas_sap') && !!lockSoloGasto && !readOnlyTotal;
 
   /* ===== DIMENSIONES ===== */
   const [dLinea, setDLinea] = useState([]);
   const [dRegion, setDRegion] = useState([]);
   const [correoAutoEnviado, setCorreoAutoEnviado] = useState(false);
-
-  // ✅ cache deptos por línea (key = línea)
   const [deptosCache, setDeptosCache] = useState({});
 
   /* ===== CABECERA ===== */
   const buildCabecera = (d) => {
     const c = d?.Cabecera || {};
     const s = (v) => (v ?? '').toString();
+
     const normDate = (v) => {
       const txt = s(v);
       if (!txt) return '';
@@ -81,6 +91,7 @@ export default function FacturaPreviewModal({
       }
       return txt.slice(0, 10);
     };
+
     return {
       CardCode: s(c.CardCode),
       CardName: s(c.CardName || d?.Cabecera?.CardName || ''),
@@ -106,30 +117,24 @@ export default function FacturaPreviewModal({
 
   /* ===== LINEAS ===== */
   const [rows, setRows] = useState(() =>
-  ((data?.Lineas || [])).map((ln) => ({
-    ItemCode: String(ln.ItemCode || ''),
-    Descripcion: String(ln.ItemDescription || ''),
-    Cuenta: String(ln.AccountCode || ''),
-    Cantidad: n2(ln.Quantity ?? 1),
-    Precio: n2(ln.UnitPrice ?? 0),
-    Descuento: n2(ln.DiscountPercent ?? 0),
-    TaxCode: String(ln.TaxCode || 'IVA_15'),
-    CostingCode: String(ln.CostingCode || ''),
-    CostingCode2: String(ln.CostingCode2 || ''),
-    CostingCode3: String(ln.CostingCode3 || ''),
-    IdSustentoTributario: String(
-      ln.U_SYP_CODIDTRD || (data?.Cabecera?.IdSustentoTributario ?? '01')
-    ),
-    ConceptoGasto: String(ln.ConceptoGasto || ''),
-  }))
-);
-
-  /* ===== BLOQUEO ===== */
-  const [finalizado, setFinalizado] = useState(false);
-  const [yaTeniaGastoAlAbrir, setYaTeniaGastoAlAbrir] = useState(false);
-
-  const readOnlyTotal = (modo === "facturas_sap") && (finalizado || yaTeniaGastoAlAbrir);
-  const isLock = (modo === 'facturas_sap') && !!lockSoloGasto && !readOnlyTotal;
+    ((data?.Lineas || [])).map((ln) => ({
+      ItemCode: String(ln.ItemCode || ''),
+      Descripcion: String(ln.ItemDescription || ''),
+      Cuenta: String(ln.AccountCode || ''),
+      Cantidad: n2(ln.Quantity ?? 1),
+      Precio: n2(ln.UnitPrice ?? 0),
+      DatoAdicional: String(ln.DatoAdicional || ''),
+      Descuento: n2(ln.DiscountPercent ?? 0),
+      TaxCode: String(ln.TaxCode || 'IVA_15'),
+      CostingCode: String(ln.CostingCode || ''),
+      CostingCode2: String(ln.CostingCode2 || ''),
+      CostingCode3: String(ln.CostingCode3 || ''),
+      IdSustentoTributario: String(
+        ln.U_SYP_CODIDTRD || (data?.Cabecera?.IdSustentoTributario ?? '01')
+      ),
+      ConceptoGasto: String(ln.ConceptoGasto || ''),
+    }))
+  );
 
   const infoCorreo = useMemo(() => ({
     proveedorCod: cabecera.CardCode || '',
@@ -146,24 +151,19 @@ export default function FacturaPreviewModal({
     setCabecera(p => ({ ...p, [k]: v }));
   };
 
-  /* =========================================================
-     Helpers deptos
-  ========================================================= */
   function deptoListForRow(lineaCode) {
-  const k = String(lineaCode ?? '').trim();
-  return Array.isArray(deptosCache[k]) ? deptosCache[k] : [];
-}
+    const k = String(lineaCode ?? '').trim();
+    return Array.isArray(deptosCache[k]) ? deptosCache[k] : [];
+  }
 
-function deptoOptsForRow(lineaCode) {
-  const list = deptoListForRow(lineaCode);
-  return (list || []).map(o => ({
-    value: String(o.code).trim(),
-    label: `${String(o.code).trim()} — ${String(o.name || '').trim()}`
-  }));
-}
+  function deptoOptsForRow(lineaCode) {
+    const list = deptoListForRow(lineaCode);
+    return (list || []).map(o => ({
+      value: String(o.code).trim(),
+      label: `${String(o.code).trim()} — ${String(o.name || '').trim()}`
+    }));
+  }
 
-
-  // ✅ asegura que el value exista en options (evita que SearchSelect lo "borre")
   function ensureOption(options, value) {
     const v = String(value ?? "").trim();
     const arr = Array.isArray(options) ? options : [];
@@ -173,7 +173,6 @@ function deptoOptsForRow(lineaCode) {
     return [{ value: v, label: v }, ...arr];
   }
 
-  // ✅ aplica patch a todas las filas SOLO si el campo está vacío
   function applyToEmpty(field, value, extraPatch = {}) {
     if (readOnlyTotal) return;
 
@@ -184,34 +183,32 @@ function deptoOptsForRow(lineaCode) {
     }));
   }
 
-  // ✅ trae deptos por línea y guarda en cache
   async function getDeptosByLinea(lineaCode) {
-  const k = String(lineaCode ?? '').trim();
-  if (!k) return [];
+    const k = String(lineaCode ?? '').trim();
+    if (!k) return [];
 
-  if (Array.isArray(deptosCache[k]) && deptosCache[k].length) {
-    return deptosCache[k];
+    if (Array.isArray(deptosCache[k]) && deptosCache[k].length) {
+      return deptosCache[k];
+    }
+
+    const base = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://back-compras-ec.onrender.com';
+    const res = await fetch(`${base}/api/dimensiones/departamento?linea=${encodeURIComponent(k)}`);
+    const j = await res.json();
+
+    const arr = (Array.isArray(j) ? j : [])
+      .map(d => ({
+        code: String(d?.code ?? d?.Code ?? '').trim(),
+        name: String(d?.name ?? d?.Name ?? '').trim(),
+      }))
+      .filter(d => d.code);
+
+    setDeptosCache(prev => ({
+      ...prev,
+      [k]: arr
+    }));
+
+    return arr;
   }
-
-  const base = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://back-compras-ec.onrender.com';
-  const res = await fetch(`${base}/api/dimensiones/departamento?linea=${encodeURIComponent(k)}`);
-  const j = await res.json();
-
-  const arr = (Array.isArray(j) ? j : [])
-    .map(d => ({
-      code: String(d?.code ?? d?.Code ?? '').trim(),
-      name: String(d?.name ?? d?.Name ?? '').trim(),
-    }))
-    .filter(d => d.code);
-
-  setDeptosCache(prev => ({
-    ...prev,
-    [k]: arr
-  }));
-
-  return arr;
-}
-
 
   /* ===== GASTOS ===== */
   const [gastos, setGastos] = useState([]);
@@ -222,15 +219,25 @@ function deptoOptsForRow(lineaCode) {
     if (readOnlyTotal) return;
 
     if (isLock) {
+      const allowedKeys = [
+        "ConceptoGasto",
+        "CostingCode",
+        "CostingCode2",
+        "CostingCode3",
+        "DatoAdicional",
+      ];
+
       const keys = Object.keys(patch || {});
-      const onlyGasto = keys.length === 1 && keys[0] === "ConceptoGasto";
-      if (!onlyGasto) return;
+      const allAllowed = keys.every(k => allowedKeys.includes(k));
+      if (!allAllowed) return;
     }
+
     setRows(prev => prev.map((r, i) => (i === ix ? { ...r, ...patch } : r)));
   };
 
   const addRow = () => {
-    if (readOnlyTotal || isLock || clase === 'ARTICULO') return;
+    if (readOnlyTotal || isLock) return;
+
     setRows(prev => ([
       ...prev,
       {
@@ -239,6 +246,7 @@ function deptoOptsForRow(lineaCode) {
         Cuenta: '',
         Cantidad: 1,
         Precio: 0,
+        DatoAdicional: '',
         Descuento: 0,
         TaxCode: 'IVA_15',
         CostingCode: '',
@@ -249,9 +257,50 @@ function deptoOptsForRow(lineaCode) {
       }
     ]));
   };
+const copiarDatoAdicional = (ix, modo = 'vacias') => {
+  if (readOnlyTotal) return;
 
+  const valorBase = String(rows[ix]?.DatoAdicional || '').trim();
+  if (!valorBase) return;
+
+  setRows(prev =>
+    prev.map((r, i) => {
+      if (i === ix) return r;
+
+      if (modo === 'todas') {
+        return { ...r, DatoAdicional: valorBase };
+      }
+
+      const actual = String(r?.DatoAdicional || '').trim();
+      if (!actual) {
+        return { ...r, DatoAdicional: valorBase };
+      }
+
+      return r;
+    })
+  );
+
+  setMsg({
+    type: 'ok',
+    text:
+      modo === 'todas'
+        ? 'Dato adicional copiado a todas las demás líneas.'
+        : 'Dato adicional copiado a las líneas vacías.'
+  });
+};
+
+const limpiarMsgLuego = () => {
+  setTimeout(() => {
+    setMsg(null);
+  }, 2200);
+};
+useEffect(() => {
+  if (!msg) return;
+  const id = setTimeout(() => setMsg(null), 2200);
+  return () => clearTimeout(id);
+}, [msg]);
   const removeRow = (ix) => {
-    if (readOnlyTotal || isLock || clase === 'ARTICULO') return;
+    if (readOnlyTotal || isLock) return;
     setRows(prev => prev.filter((_, i) => i !== ix));
   };
 
@@ -267,7 +316,7 @@ function deptoOptsForRow(lineaCode) {
     }
 
     const concepto = g.concepto ?? g.U_SYP_CONCEPTO ?? '';
-    const cuenta   = g.cuenta ?? g.U_SYP_CUENTA ?? '';
+    const cuenta = g.cuenta ?? g.U_SYP_CUENTA ?? '';
     const gastoCod = g.gasto ?? g.Name ?? '';
 
     if (isLock) {
@@ -276,17 +325,13 @@ function deptoOptsForRow(lineaCode) {
       return;
     }
 
-    // esta fila
     updateRow(i, { ConceptoGasto: gastoCod, Descripcion: concepto, Cuenta: cuenta });
-
-    // otras solo si están vacías
     applyToEmpty("ConceptoGasto", gastoCod);
   }
 
   /* =========================================================
      Effects
   ========================================================= */
-  // 1) Set clase por tipo OC
   useEffect(() => {
     if (!open || !data) return;
 
@@ -305,7 +350,6 @@ function deptoOptsForRow(lineaCode) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, data?.TipoOC, correoAutoEnviado, isLock, readOnlyTotal]);
 
-  // 2) Cargar dimensiones (línea / región)
   useEffect(() => {
     if (!open) return;
     const base = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://back-compras-ec.onrender.com';
@@ -324,32 +368,30 @@ function deptoOptsForRow(lineaCode) {
     })();
   }, [open]);
 
-  // ✅ precargar deptos para líneas ya existentes al abrir
   useEffect(() => {
-  if (!open || !rows.length) return;
+    if (!open || !rows.length) return;
 
-  const unicas = Array.from(
-    new Set(
-      rows
-        .map(r => String(r?.CostingCode ?? '').trim())
-        .filter(Boolean)
-    )
-  );
+    const unicas = Array.from(
+      new Set(
+        rows
+          .map(r => String(r?.CostingCode ?? '').trim())
+          .filter(Boolean)
+      )
+    );
 
-  if (!unicas.length) return;
+    if (!unicas.length) return;
 
-  (async () => {
-    for (const linea of unicas) {
-      try {
-        await getDeptosByLinea(linea);
-      } catch (e) {
-        console.error('Error cargando departamentos para línea', linea, e);
+    (async () => {
+      for (const linea of unicas) {
+        try {
+          await getDeptosByLinea(linea);
+        } catch (e) {
+          console.error('Error cargando departamentos para línea', linea, e);
+        }
       }
-    }
-  })();
-}, [open, rows]);
+    })();
+  }, [open, rows]);
 
-  // 3) Cargar gastos
   useEffect(() => {
     if (!open || !data || gastosLoaded) return;
     const base = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://back-compras-ec.onrender.com';
@@ -368,17 +410,17 @@ function deptoOptsForRow(lineaCode) {
     })();
   }, [open, data, gastosLoaded]);
 
-  // 4) Refrescar cabecera
   useEffect(() => {
     setCabecera(buildCabecera(data));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.DocEntry]);
 
-  // 5) Refrescar líneas
   useEffect(() => {
     if (!data) return;
 
-    const teniaGasto = (data.Lineas || []).some(ln => String(ln.ConceptoGasto || "").trim() !== "");
+    const teniaGasto = (data.Lineas || []).some(
+      ln => String(ln.ConceptoGasto || "").trim() !== ""
+    );
     setYaTeniaGastoAlAbrir(teniaGasto);
 
     setRows((data.Lineas || []).map((ln) => ({
@@ -387,6 +429,7 @@ function deptoOptsForRow(lineaCode) {
       Cuenta: String(ln.AccountCode || ln.Cuenta || ''),
       Cantidad: n2(ln.Quantity ?? 1),
       Precio: n2(ln.UnitPrice ?? 0),
+      DatoAdicional: String(ln.DatoAdicional || ''),
       Descuento: n2(ln.DiscountPercent ?? 0),
       TaxCode: String(ln.TaxCode || 'IVA_15'),
       CostingCode: String(ln.CostingCode || ''),
@@ -406,17 +449,29 @@ function deptoOptsForRow(lineaCode) {
     () => (dLinea || []).map(o => ({ value: o.code, label: `${o.code} — ${o.name}` })),
     [dLinea]
   );
+
   const dimOptsRegion = useMemo(
     () => (dRegion || []).map(o => ({ value: o.code, label: `${o.code} — ${o.name}` })),
     [dRegion]
   );
-  const ivaOpts = useMemo(() => IVA_OPTS.map(o => ({ value: o.value, label: o.label })), []);
-  const sustentoOpts = useMemo(() => SUSTENTO_OPTS.map(o => ({ value: o.value, label: o.label })), []);
-  const gastoOpts = useMemo(() => (gastos || []).map(g => {
-    const code = g.gasto ?? g.Name;
-    const label = g.concepto ?? g.U_SYP_CONCEPTO ?? '';
-    return { value: code, label: label ? `${code} — ${label}` : String(code) };
-  }), [gastos]);
+
+  const ivaOpts = useMemo(
+    () => IVA_OPTS.map(o => ({ value: o.value, label: o.label })),
+    []
+  );
+
+  const sustentoOpts = useMemo(
+    () => SUSTENTO_OPTS.map(o => ({ value: o.value, label: o.label })),
+    []
+  );
+
+  const gastoOpts = useMemo(() => (
+    (gastos || []).map(g => {
+      const code = g.gasto ?? g.Name;
+      const label = g.concepto ?? g.U_SYP_CONCEPTO ?? '';
+      return { value: code, label: label ? `${code} — ${label}` : String(code) };
+    })
+  ), [gastos]);
 
   /* ===== TOTALES ===== */
   const resumen = useMemo(() => {
@@ -477,15 +532,17 @@ function deptoOptsForRow(lineaCode) {
         }
       }
 
-      // ✅ OBLIGATORIOS: Línea / Región / Departamento (para cada línea)
-      for (let i = 0; i < rows.length; i++) {
-        const ln = rows[i];
-        const linea = String(ln?.CostingCode || "").trim();
-        const region = String(ln?.CostingCode2 || "").trim();
-        const depto = String(ln?.CostingCode3 || "").trim();
-        if (!linea) throw new Error(`Línea ${i + 1}: falta Línea`);
-        if (!region) throw new Error(`Línea ${i + 1}: falta Región`);
-        if (!depto) throw new Error(`Línea ${i + 1}: falta Departamento`);
+      if (requiereDimensiones) {
+        for (let i = 0; i < rows.length; i++) {
+          const ln = rows[i];
+          const linea = String(ln?.CostingCode || "").trim();
+          const region = String(ln?.CostingCode2 || "").trim();
+          const depto = String(ln?.CostingCode3 || "").trim();
+
+          if (!linea) throw new Error(`Línea ${i + 1}: falta Línea`);
+          if (!region) throw new Error(`Línea ${i + 1}: falta Región`);
+          if (!depto) throw new Error(`Línea ${i + 1}: falta Departamento`);
+        }
       }
 
       const payload = {
@@ -509,12 +566,14 @@ function deptoOptsForRow(lineaCode) {
         },
         Lineas: rows.map((r) => {
           const qty = Math.max(1, Number(r.Cantidad ?? 1) || 1);
+
           const baseLn = {
             Descripcion: String(r.Descripcion || ""),
             Quantity: qty,
             Cantidad: qty,
             Precio: Number(r.Precio ?? 0) || 0,
             UnitPrice: Number(r.Precio ?? 0) || 0,
+            DatoAdicional: String(r.DatoAdicional || ""),
             Descuento: Number(r.Descuento ?? 0) || 0,
             DiscountPercent: Number(r.Descuento ?? 0) || 0,
             TaxCode: (Number(r.Precio ?? 0) || 0) === 0 ? "IVA_0" : (r.TaxCode || "IVA_15"),
@@ -524,12 +583,23 @@ function deptoOptsForRow(lineaCode) {
             IdSustentoTributario: String(r.IdSustentoTributario || ""),
           };
 
-          if (clase === "SERVICIO") baseLn.ConceptoGasto = String(r.ConceptoGasto || "");
+          if (clase === "SERVICIO") {
+            baseLn.ConceptoGasto = String(r.ConceptoGasto || "");
+          }
 
           if (clase === "ARTICULO") {
-            return { ...baseLn, ItemCode: String(r.ItemCode || "").trim(), Cuenta: "" };
+            return {
+              ...baseLn,
+              ItemCode: String(r.ItemCode || "").trim(),
+              Cuenta: ""
+            };
           }
-          return { ...baseLn, Cuenta: String(r.Cuenta || "").trim(), ItemCode: "" };
+
+          return {
+            ...baseLn,
+            Cuenta: String(r.Cuenta || "").trim(),
+            ItemCode: ""
+          };
         }),
       };
 
@@ -563,11 +633,11 @@ function deptoOptsForRow(lineaCode) {
 
   if (!open || !data) return null;
 
+  const rowTypeClass = clase === 'ARTICULO' ? styles.articleRow : styles.serviceRow;
+
   return (
     <div className={styles.modalOverlay} role="dialog" aria-modal="true">
       <div className={styles.modalBox}>
-
-        {/* Header */}
         <div className={styles.modalHeader}>
           <div className={styles.titleRow}>
             <h3 className={styles.modalTitle}>
@@ -601,8 +671,8 @@ function deptoOptsForRow(lineaCode) {
             <div className={styles.helperNote}>
               {readOnlyTotal
                 ? '✅ Gasto ya registrado: este borrador está en solo lectura.'
-                : (isLock
-                  ? 'Rol Data: solo puedes seleccionar el Gasto.'
+                : (canEditDimensiones
+                  ? 'Rol Data/Administrador: puedes completar Gasto, Línea, Región y Departamento.'
                   : (clase === 'ARTICULO'
                     ? 'Notifica por correo para crear el ítem en SAP.'
                     : 'Completa las líneas y crea la factura en SAP.'))}
@@ -610,7 +680,6 @@ function deptoOptsForRow(lineaCode) {
           </div>
         </div>
 
-        {/* Contenido */}
         <div className={styles.modalContent}>
           <div className={styles.form2}>
             <label className={styles.field}>
@@ -727,9 +796,7 @@ function deptoOptsForRow(lineaCode) {
           <div className={styles.tableCard}>
             <div className={styles.tscroll}>
               <div className={styles.tableGrid}>
-
-                {/* HEADER */}
-                <div className={styles.theadRow}>
+                <div className={`${styles.theadRow} ${rowTypeClass}`}>
                   <div className={`${styles.idx} ${styles.stickyHead}`}>#</div>
 
                   {clase === 'ARTICULO' ? (
@@ -748,27 +815,25 @@ function deptoOptsForRow(lineaCode) {
                   <div>Precio</div>
                   <div>Desc%</div>
                   <div>IVA</div>
+                  <div>Dato adicional</div>
                   <div>Línea*</div>
                   <div>Región*</div>
                   <div>Departamento*</div>
                   <div>Sustento</div>
-                  {clase === "SERVICIO" && <div>Gasto</div>}
+                  <div>Gasto</div>
                   <div className={styles.right}>Total</div>
                   <div></div>
                 </div>
 
-                {/* FILAS */}
                 {rows.map((ln, i) => {
                   const base = Math.max(0, n2(ln.Cantidad) * n2(ln.Precio));
                   const disc = base * (n2(ln.Descuento) / 100);
                   const total = Math.max(0, base - disc);
 
-                  // ✅ deptoOptionsSafe AQUÍ adentro (aquí existe ln)
                   const deptoOptionsSafe = ensureOption(
-                  deptoOptsForRow(ln.CostingCode),
-                  String(ln.CostingCode3 || '').trim()
-                );
-
+                    deptoOptsForRow(ln.CostingCode),
+                    String(ln.CostingCode3 || '').trim()
+                  );
 
                   const gastoTitle = (() => {
                     const v = t(ln.ConceptoGasto);
@@ -779,7 +844,7 @@ function deptoOptsForRow(lineaCode) {
                   })();
 
                   return (
-                    <div className={styles.trow} key={i}>
+                    <div className={`${styles.trow} ${rowTypeClass}`} key={i}>
                       <div className={`${styles.idx} ${styles.sticky}`}>{i + 1}</div>
 
                       {clase === 'ARTICULO' ? (
@@ -793,6 +858,7 @@ function deptoOptsForRow(lineaCode) {
                               title={t(ln.ItemCode)}
                             />
                           </div>
+
                           <div>
                             <input
                               value={ln.Descripcion || ""}
@@ -814,6 +880,7 @@ function deptoOptsForRow(lineaCode) {
                               title={t(ln.Cuenta)}
                             />
                           </div>
+
                           <div>
                             <input
                               value={ln.Descripcion}
@@ -834,7 +901,9 @@ function deptoOptsForRow(lineaCode) {
                           value={ln.Cantidad ?? 1}
                           onChange={(e) => {
                             const v = Number(e.target.value);
-                            updateRow(i, { Cantidad: Number.isFinite(v) ? Math.max(1, v) : 1 });
+                            updateRow(i, {
+                              Cantidad: Number.isFinite(v) ? Math.max(1, v) : 1
+                            });
                           }}
                           disabled={isLock || readOnlyTotal}
                           title={t(ln.Cantidad)}
@@ -865,7 +934,6 @@ function deptoOptsForRow(lineaCode) {
                         />
                       </div>
 
-                      {/* IVA */}
                       <div>
                         <SearchSelect
                           value={ln.TaxCode}
@@ -883,23 +951,54 @@ function deptoOptsForRow(lineaCode) {
                         />
                       </div>
 
-                      {/* LÍNEA (D1) */}
+                      <div className={styles.datoAdicionalCell}>
+  <input
+    type="text"
+    value={ln.DatoAdicional || ""}
+    onChange={(e) => updateRow(i, { DatoAdicional: e.target.value })}
+    disabled={readOnlyTotal || (isLock && !(isAdmin || isData))}
+    placeholder="Escribe un dato adicional"
+    title={t(ln.DatoAdicional)}
+  />
+
+  <div className={styles.copyActions}>
+    <button
+      type="button"
+      className={styles.copyMiniBtn}
+      onClick={() => copiarDatoAdicional(i, 'vacias')}
+      disabled={!String(ln.DatoAdicional || '').trim() || readOnlyTotal}
+      title="Copiar a filas vacías"
+    >
+      Copiar
+    </button>
+
+    <button
+      type="button"
+      className={styles.copyMiniBtnAlt}
+      onClick={() => copiarDatoAdicional(i, 'todas')}
+      disabled={!String(ln.DatoAdicional || '').trim() || readOnlyTotal}
+      title="Reemplazar en todas las filas"
+    >
+      Todas
+    </button>
+  </div>
+</div>
                       <div>
                         <SearchSelect
                           value={ln.CostingCode}
                           onChange={async (v) => {
-                            // esta fila
                             updateRow(i, { CostingCode: v, CostingCode3: "" });
-
-                            // otras filas vacías: set linea y limpia depto
                             applyToEmpty("CostingCode", v, { CostingCode3: "" });
 
-                            // precargar deptos
-                            try { await getDeptosByLinea(v); } catch(e) { console.error(e); }
+                            try {
+                              await getDeptosByLinea(v);
+                            } catch (e) {
+                              console.error(e);
+                            }
                           }}
                           options={dimOptsLinea}
                           placeholder="Seleccione línea"
-                          disabled={isLock || readOnlyTotal}
+                          disabled={readOnlyTotal || !canEditDimensiones}
                           title={titleFromDim(ln.CostingCode, dLinea)}
                           searchPlaceholder="Buscar línea..."
                           maxHeight={320}
@@ -909,7 +1008,6 @@ function deptoOptsForRow(lineaCode) {
                         />
                       </div>
 
-                      {/* REGIÓN (D2) */}
                       <div>
                         <SearchSelect
                           value={ln.CostingCode2}
@@ -919,7 +1017,7 @@ function deptoOptsForRow(lineaCode) {
                           }}
                           options={dimOptsRegion}
                           placeholder="Seleccione región"
-                          disabled={isLock || readOnlyTotal}
+                          disabled={readOnlyTotal || !canEditDimensiones}
                           title={titleFromDim(ln.CostingCode2, dRegion)}
                           searchPlaceholder="Buscar región..."
                           maxHeight={320}
@@ -929,23 +1027,26 @@ function deptoOptsForRow(lineaCode) {
                         />
                       </div>
 
-                      {/* DEPARTAMENTO (D3) */}
                       <div>
-                      <SearchSelect
-                        value={String(ln.CostingCode3 || '').trim()}
-                        onChange={(v) => updateRow(i, { CostingCode3: String(v || '').trim() })}
-                        options={deptoOptsForRow(ln.CostingCode)}
-                        placeholder={ln.CostingCode ? 'Seleccione departamento' : 'Primero seleccione línea'}
-                        disabled={isLock || readOnlyTotal || !String(ln.CostingCode || '').trim()}
-                        title={titleFromDim(ln.CostingCode3, deptoListForRow(ln.CostingCode))}
-                        searchPlaceholder="Buscar departamento..."
-                        maxHeight={320}
-                        mode="dialog"
-                        dialogTitle="Seleccionar departamento"
-                        inputClassName={styles.ssInput}
-                      />
-                    </div>
-                      {/* SUSTENTO (bloqueado si ya está lleno) */}
+                        <SearchSelect
+                          value={String(ln.CostingCode3 || '').trim()}
+                          onChange={(v) => {
+                            const depto = String(v || '').trim();
+                            updateRow(i, { CostingCode3: depto });
+                            applyToEmpty("CostingCode3", depto);
+                          }}
+                          options={deptoOptionsSafe}
+                          placeholder={ln.CostingCode ? 'Seleccione departamento' : 'Primero seleccione línea'}
+                          disabled={readOnlyTotal || !canEditDimensiones || !String(ln.CostingCode || '').trim()}
+                          title={titleFromDim(ln.CostingCode3, deptoListForRow(ln.CostingCode))}
+                          searchPlaceholder="Buscar departamento..."
+                          maxHeight={320}
+                          mode="dialog"
+                          dialogTitle="Seleccionar departamento"
+                          inputClassName={styles.ssInput}
+                        />
+                      </div>
+
                       <div>
                         <SearchSelect
                           value={ln.IdSustentoTributario}
@@ -963,24 +1064,21 @@ function deptoOptsForRow(lineaCode) {
                         />
                       </div>
 
-                      {/* GASTO */}
-                      {clase === "SERVICIO" && (
-                        <div>
-                          <SearchSelect
-                            value={ln.ConceptoGasto}
-                            onChange={(v) => handleSelectGasto(i, v)}
-                            options={gastoOpts}
-                            placeholder={gastos.length ? "Seleccione concepto de gasto" : "Cargando..."}
-                            disabled={!gastos.length || readOnlyTotal || (!isLock && !canEditGasto)}
-                            title={gastoTitle}
-                            maxHeight={320}
-                            searchPlaceholder="Buscar gasto..."
-                            mode="dialog"
-                            dialogTitle="Seleccionar gasto"
-                            inputClassName={styles.ssInput}
-                          />
-                        </div>
-                      )}
+                      <div>
+  <SearchSelect
+    value={ln.ConceptoGasto}
+    onChange={(v) => handleSelectGasto(i, v)}
+    options={gastoOpts}
+    placeholder={gastos.length ? "Seleccione concepto de gasto" : "Cargando..."}
+    disabled={!gastos.length || readOnlyTotal || (!isLock && !canEditGasto)}
+    title={gastoTitle}
+    maxHeight={320}
+    searchPlaceholder="Buscar gasto..."
+    mode="dialog"
+    dialogTitle="Seleccionar gasto"
+    inputClassName={styles.ssInput}
+  />
+</div>
 
                       <div className={styles.num} title={total.toFixed(2)}>
                         {total.toFixed(2)}
@@ -1002,23 +1100,23 @@ function deptoOptsForRow(lineaCode) {
                   );
                 })}
 
-                {/* ADD ROW */}
-                {clase !== 'ARTICULO' && (
-                  <div className={`${styles.trow} ${styles.addRow}`}>
-                    <div className={styles.addRowBtnWrap}>
-                      <button
-                        type="button"
-                        className={styles.secondary}
-                        onClick={addRow}
-                        disabled={isLock || readOnlyTotal}
-                        title="Agregar una nueva línea de servicio"
-                      >
-                        + Agregar línea de servicio
-                      </button>
-                    </div>
+                <div className={`${styles.trow} ${styles.addRow} ${rowTypeClass}`}>
+                  <div className={styles.addRowBtnWrap}>
+                    <button
+                      type="button"
+                      className={styles.secondary}
+                      onClick={addRow}
+                      disabled={isLock || readOnlyTotal}
+                      title={clase === 'ARTICULO'
+                        ? 'Agregar una nueva línea de artículo'
+                        : 'Agregar una nueva línea de servicio'}
+                    >
+                      {clase === 'ARTICULO'
+                        ? '+ Agregar línea de artículo'
+                        : '+ Agregar línea de servicio'}
+                    </button>
                   </div>
-                )}
-
+                </div>
               </div>
             </div>
           </div>
@@ -1030,7 +1128,6 @@ function deptoOptsForRow(lineaCode) {
           )}
         </div>
 
-        {/* Footer */}
         <div className={styles.modalFooter}>
           <div className={styles.resumen}>
             <div>
@@ -1073,7 +1170,6 @@ function deptoOptsForRow(lineaCode) {
             </button>
           </div>
         </div>
-
       </div>
     </div>
   );

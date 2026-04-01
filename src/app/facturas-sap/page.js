@@ -18,7 +18,7 @@ export default function FacturasSAPPage() {
   const [facturas, setFacturas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-
+  const [usuario, setUsuario] = useState(null);
   // Estado para el modal
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewData, setPreviewData] = useState(null);
@@ -38,21 +38,31 @@ export default function FacturasSAPPage() {
 
   // --------- cargar rol (Data) ----------
   useEffect(() => {
-    async function loadRole() {
-      try {
-        const email = session?.user?.email;
-        if (!email) return;
+  async function loadRole() {
+    try {
+      const email = session?.user?.email?.trim();
+      if (!email) return;
 
-        const u = await getUserByEmail(email);
-        const rol = (u?.RolNombre || "").toString().toLowerCase();
-        setLockSoloGasto(rol === "data");
-      } catch (e) {
-        console.error("getUserByEmail role:", e);
-        setLockSoloGasto(false);
-      }
+      const u = await getUserByEmail(email);
+      console.log("USUARIO:", u);
+
+      setUsuario(u || null);
+
+      const rol = (u?.RolNombre || "").toString().trim().toLowerCase();
+
+      // solo si quieres mantener esta lógica especial
+      setLockSoloGasto(false); 
+      // o si de verdad DATA debe tener otro comportamiento:
+      // setLockSoloGasto(rol === "data");
+    } catch (e) {
+      console.error("getUserByEmail role:", e);
+      setUsuario(null);
+      setLockSoloGasto(false);
     }
-    loadRole();
-  }, [session?.user?.email]);
+  }
+
+  loadRole();
+}, [session?.user?.email]);
 
   // --------- cargar lista ----------
   const loadFacturas = useCallback(async () => {
@@ -296,16 +306,18 @@ export default function FacturasSAPPage() {
 
       {/* Modal */}
       <FacturaPreviewModal
-        open={previewOpen}
-        data={previewData}
-        onClose={() => {
-          setPreviewOpen(false);
-          setPreviewData(null);
-        }}
-        onUse={handleUseDraft}
-        modo="facturas_sap"
-        lockSoloGasto={lockSoloGasto}
-      />
+  open={previewOpen}
+  data={previewData}
+  onClose={() => {
+    setPreviewOpen(false);
+    setPreviewData(null);
+  }}
+  onUse={handleUseDraft}
+  modo="facturas_sap"
+  rolNombre={usuario?.RolNombre || ""}
+  rolId={usuario?.RolId ?? null}
+  lockSoloGasto={lockSoloGasto}
+/>
     </main>
   );
 }
