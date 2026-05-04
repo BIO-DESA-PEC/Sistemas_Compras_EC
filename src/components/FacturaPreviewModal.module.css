@@ -614,3 +614,62 @@
 .copyMiniBtnAlt{
   color:#475569;
 }
+
+.discountBox{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:nowrap;
+}
+
+.discountInput{
+  height: var(--ctl-h);
+  min-width: 140px;
+  border: 1px solid var(--bd);
+  border-radius: 12px;
+  padding: 8px 12px;
+  background: #fff;
+  outline: none;
+}
+
+.discountInput:focus{
+  border-color: var(--focus);
+  box-shadow: 0 0 0 3px var(--focusRing);
+}
+
+.discountApplyBtn{
+  height: var(--ctl-h);
+  border-radius: 12px;
+  padding: 0 14px;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all .15s ease;
+  white-space: nowrap;
+}
+
+.discountApplyBtn:hover{
+  background: #dbeafe;
+}
+
+.discountApplyBtn:disabled{
+  opacity: .6;
+  cursor: not-allowed;
+}
+
+.discountHelp{
+  display:block;
+  margin-top:6px;
+  color:#0f766e;
+  font-size:.78rem;
+  font-weight:700;
+}
+
+.discountSubnote{
+  display:block;
+  margin-top:4px;
+  color:#64748b;
+  font-size:.76rem;
+}

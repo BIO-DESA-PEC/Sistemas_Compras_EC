@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import styles from "./plantillasMensuales.module.css";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5000";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "https://back-compras-ec.onrender.com";
 
 const EMPTY_ITEM = {
   Orden: 0,
@@ -375,32 +375,82 @@ export default function PlantillasMensualesClient({ session }) {
                   </div>
 
                   <div className={styles.itemBody}>
-                    <div className={styles.imageBox}>
+                    <div
+  className={styles.imageBox}
+  onDragOver={(e) => {
+    e.preventDefault();
+  }}
+  onDrop={(e) => {
+    e.preventDefault();
+
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+
+    // preview local
+    const preview = URL.createObjectURL(file);
+
+    setDetalle((prev) =>
+      prev.map((it) =>
+        it.IdDetallePlantilla === item.IdDetallePlantilla
+          ? { ...it, ImagenPreviewLocal: preview }
+          : it
+      )
+    );
+
+    handleUploadImage(item.IdDetallePlantilla, file);
+  }}
+>
                       {item.ImagenReferencia ? (
-                        <img
-                          src={`${API_BASE}${item.ImagenReferencia}`}
-                          alt={item.Descripcion || "Imagen referencia"}
-                          className={styles.previewImage}
-                        />
-                      ) : (
-                        <div className={styles.imageEmpty}>Sin imagen</div>
-                      )}
+  <img
+  src={
+    item.ImagenPreviewLocal
+      ? item.ImagenPreviewLocal
+      : `${API_BASE}/api/solicitudes-mensuales/imagenes/${encodeURIComponent(item.ImagenReferencia)}`
+  }
+  className={styles.previewImage}
+  alt={item.Descripcion || "Imagen referencia"}
+  onError={(e) => {
+    console.log("No cargó imagen:", item.IdDetallePlantilla, item.ImagenReferencia);
+    e.currentTarget.style.display = "none";
+  }}
+/>
+) : (
+  <div className={styles.imageEmpty}>
+    Arrastra una imagen aquí 👇
+  </div>
+)}
 
                       <label className={styles.uploadBtn}>
                         {uploadingItemId === item.IdDetallePlantilla
                           ? "Subiendo..."
                           : "Subir imagen"}
                         <input
-                          type="file"
-                          accept="image/png,image/jpeg,image/jpg,image/webp"
-                          hidden
-                          onChange={(e) =>
-                            handleUploadImage(
-                              item.IdDetallePlantilla,
-                              e.target.files?.[0]
+                        type="file"
+                        accept="image/*"
+                        hidden
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+
+                        
+                          const preview = URL.createObjectURL(file);
+
+                          // liberar memoria después
+                          setTimeout(() => {
+                            URL.revokeObjectURL(preview);
+                          }, 5000);
+
+                          setDetalle((prev) =>
+                            prev.map((it) =>
+                              it.IdDetallePlantilla === item.IdDetallePlantilla
+                                ? { ...it, ImagenPreviewLocal: preview }
+                                : it
                             )
-                          }
-                        />
+                          );
+
+                          handleUploadImage(item.IdDetallePlantilla, file);
+                        }}
+                      />
                       </label>
                     </div>
 

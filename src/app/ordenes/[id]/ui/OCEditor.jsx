@@ -14,25 +14,24 @@ import {
   uploadFacturaAdjuntoOC,
   listFacturaAdjuntosOC,
   downloadFacturaAdjuntoOC,
-  getFacturaInfoOC, saveFacturaInfoOC
+  getFacturaInfoOC,
+  saveFacturaInfoOC,
+  persistFacturaSnapshotOC,
+  getProveedorSapByCardCode,
+  validarFacturaDuplicadaOC
 } from "@/app/lib/backend";
 import { useSession } from "next-auth/react";
-
+import ProveedorInfoModal from "@/components/ProveedorInfoModal";
 import styles from "../orden.module.css";
 import ProveedorPicker from "@/components/SupplierSelect";
 
-// 👇 el modal lo cargamos solo en cliente para evitar el error de React
 const FacturaPreviewModal = dynamic(
   () => import('@/components/FacturaPreviewModal'),
   { ssr: false }
 );
 
-// ================================================
-// Constantes y catálogos
-// ================================================
 const IVA_PCT_DEFAULT = 15;
 
-// Fila vacía por defecto para nuevas líneas
 const EMPTY_ROW = {
   NumeroArticulo: "",
   Proveedor: "",
@@ -47,17 +46,12 @@ const EMPTY_ROW = {
   DiasPago: 0,
 };
 
-// ================================================
-// Utilidades de cálculo
-// ================================================
 function num(v) {
   const n = parseFloat(v);
   return Number.isNaN(n) ? 0 : n;
 }
 
-// Recalcula una fila (subtotal base, IVA, total) respetando locks de proveedor/resumen
 function recalcRow(row) {
-  // Si es fila resumen o con totales bloqueados, normaliza valores y respeta IVA
   if (row.__summary || row.__provLocked || row.__lockTotals) {
     const ivaPct = row.IvaPct === "" || row.IvaPct == null ? IVA_PCT_DEFAULT : num(row.IvaPct);
     const base = num(row.__base) || 0;
@@ -66,7 +60,6 @@ function recalcRow(row) {
     return { ...row, IvaPct: ivaPct, __base: base, Iva: iva, Total: total };
   }
 
-  // Caso normal: recalcular en base a Cantidad, Precio, Descuento e IVA
   const cant = num(row.Cantidad);
   const precio = num(row.Precio);
   const desc = num(row.Descuento);
@@ -77,7 +70,6 @@ function recalcRow(row) {
   return { ...row, IvaPct: ivaPct, Iva: iva, Total: total, __base: +base.toFixed(2) };
 }
 
-// Crea una fila de resumen por proveedor con total impuesto incluido
 function makeSummaryRow({ proveedor, total, ivaPct, fecha }) {
   const pct = ivaPct == null || ivaPct === "" ? IVA_PCT_DEFAULT : num(ivaPct);
   const base = +(total / (1 + pct / 100)).toFixed(2);
@@ -98,39 +90,40 @@ function makeSummaryRow({ proveedor, total, ivaPct, fecha }) {
   };
 }
 
-// ================================================
-// Componente principal
-// ================================================
 export default function OCEditor({ oc, detalleInicial }) {
   const router = useRouter();
 
-  // ✅ Id de la Orden de Compra (para pasar al modal)
   const ocId = oc?.IdOC ?? oc?.IdOc ?? oc?.idOc ?? null;
 
-  // ✅ Tipo OC para decidir modal (SERVICIO / ARTICULO)
   const tipoOC = useMemo(() => (oc?.Tipo || "").trim().toUpperCase(), [oc?.Tipo]);
   const isServicio = tipoOC === "SERVICIO";
   const isArticulo = tipoOC === "ARTICULO";
-const [factCardCode, setFactCardCode] = useState("");
-const [factProveedorNom, setFactProveedorNom] = useState("");
-  // --------------------------------
-  // Estado base
-  // --------------------------------
+
+  const esMensual = useMemo(() => {
+    return (
+      String(oc?.EsMensual || "N").toUpperCase() === "Y" ||
+      !!oc?.IdPlantillaMensual ||
+      String(oc?.Comentario || "").toUpperCase().includes("CONSOLIDADA DESDE MENSUALES")
+    );
+  }, [oc]);
+
+  const [factCardCode, setFactCardCode] = useState("");
+  const [factProveedorNom, setFactProveedorNom] = useState("");
+  const [provInfo, setProvInfo] = useState(null);
   const [detalle, setDetalle] = useState(
-  (detalleInicial || []).map((d) =>
-    recalcRow({
-      ...d,
-      ProveedorCardCode:
-        d.ProveedorCardCode ??
-        d.CodigoSAP ??
-        d.CardCode ??
-        "",
-    })
-  )
-);
+    (detalleInicial || []).map((d) =>
+      recalcRow({
+        ...d,
+        ProveedorCardCode:
+          d.ProveedorCardCode ??
+          d.CodigoSAP ??
+          d.CardCode ??
+          "",
+      })
+    )
+  );
   const [estado, setEstado] = useState(oc.Estado);
 
-  // ✅ NUEVO: adjuntos de factura
   const [showUploadFactura, setShowUploadFactura] = useState(false);
   const [adjuntosFactura, setAdjuntosFactura] = useState([]);
   const [upEst, setUpEst] = useState("");
@@ -139,18 +132,92 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
   const [upFile, setUpFile] = useState(null);
   const [uploading, setUploading] = useState(false);
 
-  // Aprobación por niveles (estado remoto)
   const [ocAprob, setOcAprob] = useState({
     existe: false,
-    estado: null, // PENDIENTE | APROBADA | RECHAZADA | null
+    estado: null,
     nivel_actual: null,
     nivel_max: null,
     aprobadorId: null,
     aprobadorNombre: "",
+    puedeFacturar: false,
   });
 
   const { data: session } = useSession();
   const [user, setUser] = useState(null);
+
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewData, setPreviewData] = useState(null);
+  const [diasPago, setDiasPago] = useState(oc.DiasPago ?? 0);
+
+  const [facturaCabecera, setFacturaCabecera] = useState(oc?.facturaCabecera || null);
+  const [facturaDetalle, setFacturaDetalle] = useState(
+    Array.isArray(oc?.facturaDetalle) ? oc.facturaDetalle : []
+  );
+
+  const [factTipo, setFactTipo] = useState(null);
+
+  const editable = !(
+    estado === "PROCESADA" ||
+    estado === "ANULADA" ||
+    (ocAprob?.existe && (ocAprob.estado === "PENDIENTE" || ocAprob.estado === "APROBADA"))
+  );
+
+  const enAprobacion = ocAprob?.existe && ocAprob.estado === "PENDIENTE";
+  const aprobadaTotal = ocAprob?.existe && ocAprob.estado === "APROBADA";
+  const estadoUI = enAprobacion
+    ? "EN_APROBACION"
+    : estado === "GENERADA" && aprobadaTotal
+      ? "PENDIENTE_FACTURAR"
+      : estado;
+
+  const [priceMode, setPriceMode] = useState("LINEA");
+  const [provTotalTarget, setProvTotalTarget] = useState("");
+  const [provTotalMonto, setProvTotalMonto] = useState("");
+  const [sort, setSort] = useState({ field: null, dir: "asc" });
+
+  const [showFacturaForm, setShowFacturaForm] = useState(false);
+  const [factMode, setFactMode] = useState("NORMAL");
+  const [factEstable, setFactEstable] = useState("");
+  const [factPtoEmi, setFactPtoEmi] = useState("");
+  const [factSecu, setFactSecu] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const refreshApprovalStatus = useCallback(async () => {
+    try {
+      const st = await getOCApprovalStatus(oc.IdOC);
+      if (st?.existe) {
+        setOcAprob({
+          existe: true,
+          estado: st.estado || null,
+          nivel_actual: st.nivel_actual ?? null,
+          nivel_max: st.nivel_max ?? null,
+          aprobadorId: st.aprobadorId ?? null,
+          aprobadorNombre: st.aprobadorNombre || "",
+          puedeFacturar: !!st.puedeFacturar,
+        });
+      } else {
+        setOcAprob({
+          existe: false,
+          estado: null,
+          nivel_actual: null,
+          nivel_max: null,
+          aprobadorId: null,
+          aprobadorNombre: "",
+          puedeFacturar: st?.puedeFacturar ?? true,
+        });
+      }
+    } catch {
+      setOcAprob({
+        existe: false,
+        estado: null,
+        nivel_actual: null,
+        nivel_max: null,
+        aprobadorId: null,
+        aprobadorNombre: "",
+        puedeFacturar: true,
+      });
+    }
+  }, [oc.IdOC]);
 
   useEffect(() => {
     let alive = true;
@@ -172,72 +239,31 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
     return () => { alive = false; };
   }, [session?.user?.email]);
 
-  // Derivados útiles para UI/locks
-  const enAprobacion = ocAprob?.existe && ocAprob.estado === "PENDIENTE";
-  const aprobadaTotal = ocAprob?.existe && ocAprob.estado === "APROBADA";
-  const estadoUI = enAprobacion
-    ? "EN_APROBACION"
-    : estado === "GENERADA" && aprobadaTotal
-      ? "PENDIENTE_FACTURAR"
-      : estado;
-
-  // Modo de precios y utilidades para total por proveedor
-  const [priceMode, setPriceMode] = useState("LINEA");
-  const [provTotalTarget, setProvTotalTarget] = useState("");
-  const [provTotalMonto, setProvTotalMonto] = useState("");
-
-  // Sorting
-  const [sort, setSort] = useState({ field: null, dir: "asc" });
-
-  // Modal de preview de prefactura (datos cargados desde SAP)
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [previewData, setPreviewData] = useState(null);
-  const [diasPago, setDiasPago] = useState(oc.DiasPago ?? 0);
-
-  // ✅ NUEVO: tipo de facturación actual (para elegir modal de llenado)
-  const [factTipo, setFactTipo] = useState(null); // "SERVICIO" | "ARTICULO" | null
-
-  // Bloqueo de edición
-  const editable = !(
-    estado === "PROCESADA" ||
-    estado === "ANULADA" ||
-    (ocAprob?.existe && (ocAprob.estado === "PENDIENTE" || ocAprob.estado === "APROBADA"))
-  );
-
-  // Modal facturación básica
-  const [showFacturaForm, setShowFacturaForm] = useState(false);
-  const [factMode, setFactMode] = useState("NORMAL");
-  const [factEstable, setFactEstable] = useState("");
-  const [factPtoEmi, setFactPtoEmi] = useState("");
-  const [factSecu, setFactSecu] = useState("");
-  const [sending, setSending] = useState(false);
-
-  // --------------------------------
-  // Efectos: recargar datos al cambiar OC
-  // --------------------------------
   useEffect(() => {
     setDetalle(
-  (detalleInicial || []).map((d) =>
-    recalcRow({
-      ...d,
-      ProveedorCardCode:
-        d.ProveedorCardCode ??
-        d.CodigoSAP ??
-        d.CardCode ??
-        "",
-    })
-  )
-);
+      (detalleInicial || []).map((d) =>
+        recalcRow({
+          ...d,
+          ProveedorCardCode:
+            d.ProveedorCardCode ??
+            d.CodigoSAP ??
+            d.CardCode ??
+            "",
+        })
+      )
+    );
+
     setEstado(oc.Estado);
     setDiasPago(oc.DiasPago ?? 0);
 
-    // ✅ resetea modales al cambiar de OC
+    setFacturaCabecera(oc?.facturaCabecera || null);
+    setFacturaDetalle(Array.isArray(oc?.facturaDetalle) ? oc.facturaDetalle : []);
+
     setPreviewOpen(false);
     setPreviewData(null);
     setShowFacturaForm(false);
     setFactTipo(null);
 
-    // ✅ resetea adjuntos UI
     setShowUploadFactura(false);
     setUpEst("");
     setUpPto("");
@@ -245,65 +271,30 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
     setUpFile(null);
     setAdjuntosFactura([]);
 
-    // Consulta estado de aprobación para esta OC
+    refreshApprovalStatus();
+
     (async () => {
       try {
-        const st = await getOCApprovalStatus(oc.IdOC);
-        if (st?.existe) {
-          setOcAprob({
-            existe: true,
-            estado: st.estado || null,
-            nivel_actual: st.nivel_actual ?? null,
-            nivel_max: st.nivel_max ?? null,
-            aprobadorId: st.aprobadorId ?? null,
-            aprobadorNombre: st.aprobadorNombre || "",
-          });
-        } else {
-          setOcAprob({
-            existe: false,
-            estado: null,
-            nivel_actual: null,
-            nivel_max: null,
-            aprobadorId: null,
-            aprobadorNombre: "",
-          });
+        if (!oc?.IdOC) return;
+        const r = await getFacturaInfoOC(oc.IdOC);
+        const info = r?.data || null;
+
+        if (info) {
+          setFactEstable(info.Establecimiento || "");
+          setFactPtoEmi(info.PuntoEmision || "");
+          setFactSecu(info.Secuencial || "");
+          setFactCardCode(info.ProveedorCardCode || "");
+
+          setUpEst(info.Establecimiento || "");
+          setUpPto(info.PuntoEmision || "");
+          setUpSec(info.Secuencial || "");
         }
-      } catch {
-        setOcAprob({
-          existe: false,
-          estado: null,
-          nivel_actual: null,
-          nivel_max: null,
-          aprobadorId: null,
-          aprobadorNombre: "",
-        });
+      } catch (e) {
+        console.warn("No pude cargar factura-info", e);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    // ✅ NUEVO: cargar Est/Pto/Sec guardados para esta OC
-  (async () => {
-  try {
-    if (!oc?.IdOC) return;
-    const r = await getFacturaInfoOC(oc.IdOC);
-    const info = r?.data || null;
+  }, [oc?.IdOC, oc, detalleInicial, refreshApprovalStatus]);
 
-    if (info) {
-      setFactEstable(info.Establecimiento || "");
-      setFactPtoEmi(info.PuntoEmision || "");
-      setFactSecu(info.Secuencial || "");
-      setFactCardCode(info.ProveedorCardCode || "");
-
-      setUpEst(info.Establecimiento || "");
-      setUpPto(info.PuntoEmision || "");
-      setUpSec(info.Secuencial || "");
-    }
-  } catch (e) {
-    console.warn("No pude cargar factura-info", e);
-  }
-})();
-  }, [oc?.IdOC]);
-
-  // ✅ NUEVO: cargar adjuntos cada vez que cambie la OC (o el estado)
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -320,9 +311,6 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
     return () => { alive = false; };
   }, [oc?.IdOC]);
 
-  // --------------------------------
-  // Totales (memoizados)
-  // --------------------------------
   const totals = useMemo(() => {
     const sub = detalle.reduce((s, r) => s + num(r.__base), 0);
     const iva = detalle.reduce((s, r) => s + num(r.Iva), 0);
@@ -330,23 +318,17 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
     return { sub: +sub.toFixed(2), iva: +iva.toFixed(2), tot: +tot.toFixed(2) };
   }, [detalle]);
 
-  // ================================================
-  // Handlers de edición/tabla
-  // ================================================
-  const onChangeCell = useCallback(
-    (idx, field, value) => {
-      setDetalle((prev) => {
-        const rows = [...prev];
-        const next = { ...rows[idx], [field]: value };
-        if (["Cantidad", "Precio", "Descuento", "IvaPct"].includes(field)) {
-          next[field] = value === "" ? 0 : num(value);
-        }
-        rows[idx] = recalcRow(next);
-        return rows;
-      });
-    },
-    []
-  );
+  const onChangeCell = useCallback((idx, field, value) => {
+    setDetalle((prev) => {
+      const rows = [...prev];
+      const next = { ...rows[idx], [field]: value };
+      if (["Cantidad", "Precio", "Descuento", "IvaPct"].includes(field)) {
+        next[field] = value === "" ? 0 : num(value);
+      }
+      rows[idx] = recalcRow(next);
+      return rows;
+    });
+  }, []);
 
   const addRow = useCallback(() => {
     setDetalle((d) => {
@@ -369,21 +351,17 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
     setDetalle((d) => d.filter((_, k) => k !== i));
   }, []);
 
-  const sortBy = useCallback(
-    (field) => {
-      if (!detalle.length) return;
-      setDetalle((d) => {
-        const dir = sort.field === field && sort.dir === "asc" ? "desc" : "asc";
-        setSort({ field, dir });
-        const factor = dir === "asc" ? 1 : -1;
-        const norm = (v) => (v ?? "").toString().toUpperCase();
-        return [...d].sort((a, b) => norm(a[field]).localeCompare(norm(b[field])) * factor);
-      });
-    },
-    [detalle.length, sort.field, sort.dir]
-  );
+  const sortBy = useCallback((field) => {
+    if (!detalle.length) return;
+    setDetalle((d) => {
+      const dir = sort.field === field && sort.dir === "asc" ? "desc" : "asc";
+      setSort({ field, dir });
+      const factor = dir === "asc" ? 1 : -1;
+      const norm = (v) => (v ?? "").toString().toUpperCase();
+      return [...d].sort((a, b) => norm(a[field]).localeCompare(norm(b[field])) * factor);
+    });
+  }, [detalle.length, sort.field, sort.dir]);
 
-  // Aplica un total por proveedor
   const aplicarTotalPorProveedor = useCallback(() => {
     if (!editable) return;
 
@@ -398,13 +376,11 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
     setDetalle((d) => {
       const rows = [...d];
 
-      // Índices de filas del proveedor (no resumen)
       const idxs = rows
         .map((r, idx) => ({ r, idx }))
         .filter((x) => (x.r.Proveedor || "") === prov && !x.r.__summary)
         .map((x) => x.idx);
 
-      // Semillas de IVA y fecha
       const ivaSeed =
         (idxs.length ? rows[idxs.find((i) => rows[i].IvaPct != null)]?.IvaPct : undefined) ?? IVA_PCT_DEFAULT;
       const fechaSeed =
@@ -412,7 +388,6 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
           ? rows[idxs.find((i) => (rows[i].FechaNecesaria || "").trim())]?.FechaNecesaria
           : undefined) || "";
 
-      // Bloquea las filas del proveedor
       idxs.forEach((i) => {
         rows[i] = recalcRow({
           ...rows[i],
@@ -425,7 +400,6 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
         });
       });
 
-      // Inserta o reemplaza la fila resumen
       const sumIdx = rows.findIndex((r) => r.__summary && (r.Proveedor || "") === prov);
       const summary = makeSummaryRow({ proveedor: prov, total, ivaPct: ivaSeed, fecha: fechaSeed });
       if (sumIdx >= 0) rows[sumIdx] = summary;
@@ -435,101 +409,173 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
     });
   }, [editable, provTotalMonto, provTotalTarget]);
 
-  // ================================================
-  // Guardado + Aprobación
-  // ================================================
-  const saveDetail = useCallback(
-    async (auto = false) => {
-      // 1) Persistir el detalle actual
-      await replaceOCDetail(oc.IdOC, detalle);
+  const saveDetail = useCallback(async ({ autoApprove = false, tipoAprobacion = "JEFE" } = {}) => {
+    await replaceOCDetail(oc.IdOC, detalle);
 
-      // 2) Solicitar aprobación
-      try {
-        const r = await requestOCApproval(oc.IdOC, { autoApprove: auto });
+    try {
+      const autoApproveFinal = esMensual ? true : autoApprove;
 
-        // 3) Refrescar estado de aprobación
-        try {
-          const s = await getOCApprovalStatus(oc.IdOC);
-          if (s?.existe) {
-            setOcAprob({
-              existe: true,
-              estado: s.estado || null,
-              nivel_actual: s.nivel_actual ?? null,
-              nivel_max: s.nivel_max ?? null,
-              aprobadorId: s.aprobadorId ?? null,
-              aprobadorNombre: s.aprobadorNombre || "",
-            });
-          }
-        } catch (_) {}
+      const payload = autoApproveFinal
+        ? { autoApprove: true }
+        : { autoApprove: false, tipoAprobacion };
 
-        // 4) Mensaje
-        if (r?.estado === "APROBADA") {
-          alert(
-            auto
-              ? "Detalle guardado y OC aprobada automáticamente."
-              : "Detalle guardado. La regla dio 0 niveles (aprobada)."
-          );
-        } else if (r?.estado === "PENDIENTE") {
-          alert(`Detalle guardado. Enviado a aprobación (nivel ${r?.nivel_actual || 1}/${r?.nivel_max || "?"}).`);
-        } else if (r?.estado === "RECHAZADA") {
-          alert("Detalle guardado. (Estado: RECHAZADA)");
-        } else {
-          alert("Detalle guardado.");
-        }
-      } catch (e) {
-        console.error(e);
-        alert("Detalle guardado, pero al solicitar aprobación hubo un error: " + (e?.message || e));
+      const r = await requestOCApproval(oc.IdOC, payload);
+
+      await refreshApprovalStatus();
+
+      if (r?.estado === "APROBADA") {
+        alert(
+          autoApproveFinal
+            ? "Detalle guardado. La OC quedó lista para facturar."
+            : "Detalle guardado y OC aprobada."
+        );
+      } else if (r?.estado === "PENDIENTE") {
+        alert(
+          tipoAprobacion === "CEO"
+            ? "Detalle guardado. Enviado a aprobación de CEO."
+            : "Detalle guardado. Enviado a aprobación del Jefe."
+        );
+      } else if (r?.estado === "RECHAZADA") {
+        alert("Detalle guardado. (Estado: RECHAZADA)");
+      } else {
+        alert("Detalle guardado.");
       }
-    },
-    [detalle, oc.IdOC]
-  );
+    } catch (e) {
+      console.error(e);
+      alert("Detalle guardado, pero al solicitar aprobación hubo un error: " + (e?.message || e));
+    }
+  }, [detalle, oc.IdOC, refreshApprovalStatus, esMensual]);
 
-  // ================================================
-  // Facturación
-  // ================================================
- const getProveedorPrincipal = useCallback(() => {
-  const fila = (detalle || []).find((x) => (x?.Proveedor || "").trim());
-  return {
-    nombre: fila?.Proveedor || "",
-    cardCode: fila?.ProveedorCardCode || "",
-  };
-}, [detalle]);
+  const getProveedorPrincipal = useCallback(() => {
+    const fila = (detalle || []).find((x) => (x?.Proveedor || "").trim());
+    return {
+      nombre: fila?.Proveedor || "",
+      cardCode: fila?.ProveedorCardCode || "",
+    };
+  }, [detalle]);
+
   const mandarAFacturar = useCallback(async (modo = "NORMAL") => {
-  try {
-    const st = await getOCApprovalStatus(oc.IdOC);
-    if (!st?.existe || st.estado !== "APROBADA") {
-      alert("Para facturar, la OC debe estar APROBADA.");
+    try {
+      const st = await getOCApprovalStatus(oc.IdOC);
+
+      if (st?.existe && st.estado !== "APROBADA") {
+        alert("Para facturar, la OC debe estar aprobada.");
+        return;
+      }
+    } catch {}
+
+    setFactMode(modo);
+
+    const t = String(oc?.Tipo || "").trim().toUpperCase();
+    if (t !== "SERVICIO" && t !== "ARTICULO") {
+      alert("La OC no tiene Tipo válido (SERVICIO/ARTICULO).");
       return;
     }
-  } catch {}
 
-  setFactMode(modo);
+    setFactTipo(t);
 
-  const t = String(oc?.Tipo || "").trim().toUpperCase();
-  if (t !== "SERVICIO" && t !== "ARTICULO") {
-    alert("La OC no tiene Tipo válido (SERVICIO/ARTICULO).");
-    return;
-  }
+    const prov = getProveedorPrincipal();
 
-  setFactTipo(t);
+    if (!factProveedorNom && prov?.nombre) {
+      setFactProveedorNom(prov.nombre);
+    }
+    if (!factCardCode && prov?.cardCode) {
+      setFactCardCode(prov.cardCode);
+    }
 
-  const prov = getProveedorPrincipal();
+    const est = (factEstable || "").trim();
+    const pto = (factPtoEmi || "").trim();
+    const sec = (factSecu || "").trim();
+    const card = (factCardCode || prov?.cardCode || "").trim();
 
-  if (!factProveedorNom && prov?.nombre) {
-    setFactProveedorNom(prov.nombre);
-  }
-  if (!factCardCode && prov?.cardCode) {
-    setFactCardCode(prov.cardCode);
-  }
+    if (est && pto && sec) {
+        const dup = await validarFacturaDuplicadaOC({
+          establecimiento: est,
+          puntoEmision: pto,
+          secuencial: sec,
+          excludeIdOC: oc.IdOC,
+        });
 
-  const est = (factEstable || "").trim();
-  const pto = (factPtoEmi || "").trim();
-  const sec = (factSecu || "").trim();
-  const card = (factCardCode || prov?.cardCode || "").trim();
+        if (dup?.existe) {
+          alert(dup?.mensaje || `La factura ${est}-${pto}-${sec} ya está registrada en otra OC.`);
+          return;
+        }
+      setSending(true);
+      try {
+        const prev = await previewPrefacturaOC(oc.IdOC, {
+          Establecimiento: est,
+          PuntoEmision: pto,
+          Secuencial: sec,
+          CardCode: card || "",
+        });
 
-  if (est && pto && sec) {
+        if (prev && prev.error) throw new Error(prev.error);
+
+        if (!prev || !prev.encontrado) {
+          alert((prev && prev.mensaje) || "No se encontró el borrador en SAP.");
+          return;
+        }
+
+        setPreviewData(prev);
+        setFacturaCabecera(prev?.Cabecera || null);
+        setFacturaDetalle(Array.isArray(prev?.Lineas) ? prev.Lineas : []);
+        setPreviewOpen(true);
+      } catch (e) {
+        alert("Error en preview: " + (e?.message || e));
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
+    setShowFacturaForm(true);
+  }, [oc.IdOC, oc?.Tipo, factEstable, factPtoEmi, factSecu, factCardCode, factProveedorNom, getProveedorPrincipal]);
+
+  const guardarPagoEncabezado = useCallback(async () => {
+    try {
+      await updatePagoOC(oc.IdOC, { DiasPago: diasPago });
+      alert("Días de crédito (global) guardados.");
+    } catch (e) {
+      console.error(e);
+      alert("Error guardando días de crédito.");
+    }
+  }, [diasPago, oc.IdOC]);
+
+  const confirmarPrefactura = useCallback(async () => {
+    const est = (factEstable || "").trim();
+    const pto = (factPtoEmi || "").trim();
+    const sec = (factSecu || "").trim();
+
+    const prov = getProveedorPrincipal();
+    const card = (factCardCode || prov?.cardCode || "").trim();
+    const provNom = (factProveedorNom || prov?.nombre || "").trim();
+
+    if (!est || !pto || !sec) {
+      alert("Completa Establecimiento, Punto de Emisión y Secuencial.");
+      return;
+    }
+
     setSending(true);
     try {
+      setShowFacturaForm(false);
+      const dup = await validarFacturaDuplicadaOC({
+        establecimiento: est,
+        puntoEmision: pto,
+        secuencial: sec,
+        excludeIdOC: oc.IdOC,
+      });
+
+      if (dup?.existe) {
+        alert(dup?.mensaje || `La factura ${est}-${pto}-${sec} ya está registrada en otra OC.`);
+        return;
+      }
+      await saveFacturaInfoOC(oc.IdOC, {
+        Establecimiento: est,
+        PuntoEmision: pto,
+        Secuencial: sec,
+        ProveedorCardCode: card || "",
+      });
+
       const prev = await previewPrefacturaOC(oc.IdOC, {
         Establecimiento: est,
         PuntoEmision: pto,
@@ -544,95 +590,31 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
         return;
       }
 
+      setFactCardCode(prev?.Cabecera?.CardCode || card || "");
+      setFactProveedorNom(prev?.Cabecera?.CardName || provNom || "");
       setPreviewData(prev);
+      setFacturaCabecera(prev?.Cabecera || null);
+      setFacturaDetalle(Array.isArray(prev?.Lineas) ? prev.Lineas : []);
       setPreviewOpen(true);
     } catch (e) {
-      alert("Error en preview: " + (e?.message || e));
+      alert("Error en preview: " + (e && e.message ? e.message : String(e)));
     } finally {
       setSending(false);
     }
-    return;
-  }
+  }, [factEstable, factPtoEmi, factSecu, factCardCode, factProveedorNom, getProveedorPrincipal, oc.IdOC]);
 
-  setShowFacturaForm(true);
-}, [oc.IdOC, oc?.Tipo, factEstable, factPtoEmi, factSecu, factCardCode, factProveedorNom, getProveedorPrincipal]);
-  // Guardar encabezado de pago
-  const guardarPagoEncabezado = useCallback(async () => {
-    try {
-      await updatePagoOC(oc.IdOC, { DiasPago: diasPago });
-      alert("Días de crédito (global) guardados.");
-    } catch (e) {
-      console.error(e);
-      alert("Error guardando días de crédito.");
-    }
-  }, [diasPago, oc.IdOC]);
-
-  // Confirmar y hacer preview en SAP
-  const confirmarPrefactura = useCallback(async () => {
-  const est = (factEstable || "").trim();
-  const pto = (factPtoEmi || "").trim();
-  const sec = (factSecu || "").trim();
-
-  const prov = getProveedorPrincipal();
-  const card = (factCardCode || prov?.cardCode || "").trim();
-  const provNom = (factProveedorNom || prov?.nombre || "").trim();
-
-  console.log("DEBUG FACTURA:", {
-    est,
-    pto,
-    sec,
-    factCardCode,
-    proveedor: prov,
-  });
-
-  if (!est || !pto || !sec) {
-    alert("Completa Establecimiento, Punto de Emisión y Secuencial.");
-    return;
-  }
-
-  setSending(true);
+  const handleUseDraft = useCallback(async () => {
   try {
-    setShowFacturaForm(false);
+    const docEntry = previewData?.DocEntry;
+    const cab = previewData?.Cabecera;
+    const lineas = previewData?.Lineas || [];
 
-    await saveFacturaInfoOC(oc.IdOC, {
-      Establecimiento: est,
-      PuntoEmision: pto,
-      Secuencial: sec,
-      ProveedorCardCode: card || "",
-    });
-
-    const prev = await previewPrefacturaOC(oc.IdOC, {
-      Establecimiento: est,
-      PuntoEmision: pto,
-      Secuencial: sec,
-      CardCode: card || "",
-    });
-
-    if (prev && prev.error) throw new Error(prev.error);
-
-    if (!prev || !prev.encontrado) {
-      alert((prev && prev.mensaje) || "No se encontró el borrador en SAP.");
+    if (!docEntry || !cab) {
+      alert("No existe información del borrador para guardar.");
       return;
     }
 
-    setFactCardCode(prev?.Cabecera?.CardCode || card || "");
-    setFactProveedorNom(prev?.Cabecera?.CardName || provNom || "");
-    setPreviewData(prev);
-    setPreviewOpen(true);
-  } catch (e) {
-    alert("Error en preview: " + (e && e.message ? e.message : String(e)));
-  } finally {
-    setSending(false);
-  }
-}, [factEstable, factPtoEmi, factSecu, factCardCode, factProveedorNom, getProveedorPrincipal, oc.IdOC]);
-  // Usa el borrador encontrado y marca la OC como PROCESADA
-  const handleUseDraft = useCallback(async () => {
-  try {
-    if (estado !== "PROCESADA") {
-      await updateOCState(oc.IdOC, { estado: "PROCESADA" });
-      setEstado("PROCESADA");
-    }
-
+    // 1) Guardar identificación de factura
     if (factEstable && factPtoEmi && factSecu) {
       await saveFacturaInfoOC(oc.IdOC, {
         Establecimiento: factEstable,
@@ -642,32 +624,44 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
       });
     }
 
-    alert("OC PROCESADA usando el borrador detectado.");
+    // 2) Persistir snapshot completo en HANA
+    await persistFacturaSnapshotOC(oc.IdOC, docEntry, {
+      Cabecera: cab,
+      Lineas: lineas,
+    });
+
+    // 3) Marcar OC como procesada
+    if (estado !== "PROCESADA") {
+      await updateOCState(oc.IdOC, { estado: "PROCESADA" });
+      setEstado("PROCESADA");
+    }
+
+    // 4) Reflejar en UI
+    setFacturaCabecera(cab);
+    setFacturaDetalle(lineas);
+
+    alert("OC PROCESADA y factura asociada guardada correctamente.");
   } catch (e) {
-    alert("Se encontró el borrador, pero hubo error: " + (e?.message || e));
+    alert("Se encontró el borrador, pero hubo error al guardar: " + (e?.message || e));
   } finally {
     setPreviewOpen(false);
     setPreviewData(null);
   }
-}, [estado, oc.IdOC, factEstable, factPtoEmi, factSecu, factCardCode]);
+}, [estado, oc.IdOC, factEstable, factPtoEmi, factSecu, factCardCode, previewData]);
 
-  // Cancelar formulario de prefactura
   const cancelarPrefactura = useCallback(() => {
-  setShowFacturaForm(false);
-  setFactTipo(null);
-}, []);
+    setShowFacturaForm(false);
+    setFactTipo(null);
+  }, []);
 
-  // ✅ NUEVO: abrir modal subir factura (autollenar si tienes previewData)
   const openUploadFactura = useCallback(() => {
-  setUpEst((factEstable || "").trim());
-  setUpPto((factPtoEmi || "").trim());
-  setUpSec((factSecu || "").trim());
-  setUpFile(null);
-  setShowUploadFactura(true);
-}, [factEstable, factPtoEmi, factSecu]);
+    setUpEst((factEstable || "").trim());
+    setUpPto((factPtoEmi || "").trim());
+    setUpSec((factSecu || "").trim());
+    setUpFile(null);
+    setShowUploadFactura(true);
+  }, [factEstable, factPtoEmi, factSecu]);
 
-
-  // ✅ NUEVO: subir adjunto a SharePoint
   const subirFactura = useCallback(async () => {
     if (!oc?.IdOC) return;
 
@@ -708,7 +702,6 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
     }
   }, [oc?.IdOC, upEst, upPto, upSec, upFile, session?.user?.email]);
 
-  // Anular OC
   const anularOC = useCallback(async () => {
     const motivo = prompt("Motivo de anulación (requerido):", "");
     if (!motivo) return;
@@ -717,7 +710,6 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
     router.push("/solicitudes");
   }, [oc.IdOC, router]);
 
-  // Abrir modal de facturación si viene ?facturar=1
   useEffect(() => {
     if (typeof window !== "undefined") {
       const sp = new URLSearchParams(window.location.search);
@@ -728,18 +720,35 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
         window.history.replaceState({}, "", url.pathname + url.search);
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [mandarAFacturar]);
+const cargarProveedor = useCallback(async (cardCode) => {
+  try {
+    if (!cardCode) {
+      alert("Esta línea no tiene código SAP.");
+      return;
+    }
 
-  // ================================================
-  // Render
-  // ================================================
+    const data = await getProveedorSapByCardCode(cardCode);
+    setProvInfo(data);
+  } catch (e) {
+    console.error("Error cargando proveedor SAP:", e);
+    alert(`No se pudo cargar la información del proveedor: ${e?.message || e}`);
+  }
+}, []);
+const yaFacturada =
+  estado === "PROCESADA" ||
+  !!facturaCabecera ||
+  !!(facturaCabecera?.DocEntry);
+
+const puedeFacturar =
+  !yaFacturada &&
+  (
+    (!ocAprob?.existe) ||
+    (ocAprob?.estado === "APROBADA")
+  );
   return (
     <div className={`${styles.ocTheme} ${styles.card}`}>
-
-      {/* === Top: resumen + acciones === */}
       <div className={styles.topSection}>
-        {/* Fila 1: total + chips de estado + acciones principales */}
         <div className={styles.topRow}>
           <div className={styles.topRowLeft}>
             <span className={styles.topLabel}>Total orden</span>
@@ -763,44 +772,66 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
                 </span>
               )}
 
-              {ocAprob?.estado === "APROBADA" && (
+              {ocAprob?.estado === "APROBADA" && ocAprob?.existe && (
                 <span className={styles.chip}>
                   Aprobada (nivel {ocAprob.nivel_max})
                 </span>
               )}
+
+              {!ocAprob?.existe && (
+  <span className={styles.chip}>
+    {esMensual ? "Mensual autoaprobada" : "Sin aprobación"}
+  </span>
+)}
             </div>
           </div>
 
           <div className={styles.topRowRight}>
             {editable ? (
-              <>
-                <button
-                  className={styles.secondary}
-                  onClick={addRow}
-                >
-                  Agregar línea
-                </button>
+  <>
+    <button className={styles.secondary} onClick={addRow}>
+      Agregar línea
+    </button>
 
-                <button
-                  className={styles.primary}
-                  onClick={() => saveDetail(false)}
-                >
-                  Guardar detalle (enviar a aprobación)
-                </button>
+    {esMensual ? (
+      <button
+        className={styles.primary}
+        onClick={() => saveDetail({ autoApprove: true })}
+        title="OC mensual: no requiere aprobación de Jefe ni CEO"
+      >
+        Guardar detalle
+      </button>
+    ) : (
+      <>
+        <button
+          className={styles.primary}
+          onClick={() => saveDetail({ autoApprove: false, tipoAprobacion: "JEFE" })}
+        >
+          Guardar detalle (enviar a Jefe)
+        </button>
 
-                <button
-                  className={styles.secondary}
-                  onClick={() => saveDetail(true)}
-                  title="Aprueba automáticamente (omite flujo)"
-                >
-                  Guardar detalle (sin aprobación)
-                </button>
-              </>
-            ) : (
-              <span className={styles.muted}>Edición bloqueada</span>
-            )}
+        <button
+          className={styles.secondary}
+          onClick={() => saveDetail({ autoApprove: false, tipoAprobacion: "CEO" })}
+          title="Enviar a aprobación de CEO"
+        >
+          Enviar a CEO
+        </button>
 
-            {/* ✅ NUEVO: botón subir factura SOLO si PROCESADA */}
+        <button
+          className={styles.secondary}
+          onClick={() => saveDetail({ autoApprove: true })}
+          title="Sin aprobación, queda lista para facturar"
+        >
+          Guardar detalle (sin aprobación)
+        </button>
+      </>
+    )}
+  </>
+) : (
+  <span className={styles.muted}>Edición bloqueada</span>
+)}
+
             {estado === "PROCESADA" && (
               <button
                 className={styles.primary}
@@ -815,18 +846,19 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
               Anular
             </button>
 
-            <button
-              className={styles.ok}
-              onClick={() => mandarAFacturar("NORMAL")}
-              title={tipoOC ? `Tipo: ${tipoOC}` : "Tipo no definido"}
-            >
-              Facturar
-            </button>
+            {puedeFacturar && (
+              <button
+                className={styles.ok}
+                onClick={() => mandarAFacturar("NORMAL")}
+                title={tipoOC ? `Tipo: ${tipoOC}` : "Tipo no definido"}
+              >
+                Facturar
+              </button>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Tabla principal */}
       <div className={styles.tableWrapper}>
         <table className={styles.table}>
           <thead>
@@ -873,11 +905,7 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
 
           <tbody>
             {detalle.map((r, i) => (
-              <tr
-                key={i}
-                className={r.__summary ? styles.summaryRow : undefined}
-              >
-                {/* Artículo */}
+              <tr key={i} className={r.__summary ? styles.summaryRow : undefined}>
                 <td className={styles.colArticulo}>
                   {r.__summary ? (
                     <span className={styles.inputReadonly}>{r.NumeroArticulo}</span>
@@ -886,61 +914,65 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
                       disabled={!editable}
                       className={styles.input}
                       value={r.NumeroArticulo || ""}
-                      onChange={(e) =>
-                        onChangeCell(i, "NumeroArticulo", e.target.value)
-                      }
+                      onChange={(e) => onChangeCell(i, "NumeroArticulo", e.target.value)}
                       placeholder="Artículo..."
                     />
                   )}
                 </td>
 
-                {/* Proveedor */}
                 <td className={styles.colProveedor}>
-                  {r.__summary || r.__provLocked ? (
-                    <span className={styles.inputReadonly}>{r.Proveedor || "—"}</span>
-                  ) : (
-                    <div className={styles.proveedorWrapper}>
-                     <ProveedorPicker
-  disabled={!editable}
-  value={r.Proveedor || ""}
-  onChange={(nombre, proveedor) => {
-    console.log("Proveedor seleccionado OC:", { nombre, proveedor });
-
-    setDetalle((prev) => {
-      const rows = [...prev];
-      rows[i] = recalcRow({
-        ...rows[i],
-        Proveedor: nombre || "",
-        ProveedorCardCode: proveedor?.CodigoSAP || "",
-      });
-      return rows;
-    });
-  }}
-/>
+                {r.__summary || r.__provLocked ? (
+                  <span className={styles.inputReadonly}>{r.Proveedor || "—"}</span>
+                ) : (
+                  <div className={styles.proveedorWrapper}>
+                    <div style={{ width: "100%" }}>
+                      <ProveedorPicker
+                        disabled={!editable}
+                        value={r.Proveedor || ""}
+                        onChange={(nombre, proveedor) => {
+                          setDetalle((prev) => {
+                            const rows = [...prev];
+                            rows[i] = recalcRow({
+                              ...rows[i],
+                              Proveedor: nombre || "",
+                              ProveedorCardCode: proveedor?.CodigoSAP || "",
+                              DiasPago:
+                                typeof proveedor?.DiasCredito === "number"
+                                  ? proveedor.DiasCredito
+                                  : (rows[i]?.DiasPago ?? 0),
+                            });
+                            return rows;
+                          });
+                        }}
+                      />
                     </div>
-                  )}
-                </td>
 
-                {/* Fecha necesaria */}
+                    <button
+                      className={styles.viewInfoBtn}
+                      type="button"
+                      title="Ver información del proveedor"
+                      onClick={() => cargarProveedor(r.ProveedorCardCode)}
+                    >
+                      <span className={styles.eyeIcon}>👁️</span>
+                    </button>
+                  </div>
+                )}
+              </td>
+
                 <td className={styles.colFecha}>
                   {r.__summary ? (
-                    <span className={styles.inputReadonly}>
-                      {r.FechaNecesaria || "—"}
-                    </span>
+                    <span className={styles.inputReadonly}>{r.FechaNecesaria || "—"}</span>
                   ) : (
                     <input
                       disabled={!editable}
                       className={styles.input}
                       type="date"
                       value={r.FechaNecesaria || ""}
-                      onChange={(e) =>
-                        onChangeCell(i, "FechaNecesaria", e.target.value)
-                      }
+                      onChange={(e) => onChangeCell(i, "FechaNecesaria", e.target.value)}
                     />
                   )}
                 </td>
 
-                {/* Cantidad */}
                 <td className={`${styles.colCant} ${styles.num}`}>
                   {r.__summary ? (
                     <span className={styles.inputReadonly}>—</span>
@@ -950,14 +982,11 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
                       className={`${styles.input} ${styles.inputNum}`}
                       type="number"
                       value={r.Cantidad ?? 0}
-                      onChange={(e) =>
-                        onChangeCell(i, "Cantidad", e.target.value)
-                      }
+                      onChange={(e) => onChangeCell(i, "Cantidad", e.target.value)}
                     />
                   )}
                 </td>
 
-                {/* Precio */}
                 <td className={`${styles.colPrecio} ${styles.num}`}>
                   {r.__summary || r.__provLocked ? (
                     <span className={styles.inputReadonly}>—</span>
@@ -967,9 +996,7 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
                       className={`${styles.input} ${styles.inputNum}`}
                       type="number"
                       value={r.Precio ?? 0}
-                      onChange={(e) =>
-                        onChangeCell(i, "Precio", e.target.value)
-                      }
+                      onChange={(e) => onChangeCell(i, "Precio", e.target.value)}
                       title={
                         priceMode === "TOTAL_X_PROV"
                           ? "Bloqueado por 'Total por proveedor'"
@@ -979,7 +1006,6 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
                   )}
                 </td>
 
-                {/* Descuento */}
                 <td className={`${styles.colDesc} ${styles.num}`}>
                   {r.__summary || r.__provLocked ? (
                     <span className={styles.inputReadonly}>—</span>
@@ -989,14 +1015,11 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
                       className={`${styles.input} ${styles.inputNum}`}
                       type="number"
                       value={r.Descuento ?? 0}
-                      onChange={(e) =>
-                        onChangeCell(i, "Descuento", e.target.value)
-                      }
+                      onChange={(e) => onChangeCell(i, "Descuento", e.target.value)}
                     />
                   )}
                 </td>
 
-                {/* IVA % */}
                 <td className={`${styles.colIvaPct} ${styles.num}`}>
                   {r.__summary || r.__provLocked ? (
                     <span className={styles.inputReadonly}>—</span>
@@ -1006,43 +1029,35 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
                       className={`${styles.input} ${styles.inputNum}`}
                       type="number"
                       value={r.IvaPct ?? IVA_PCT_DEFAULT}
-                      onChange={(e) =>
-                        onChangeCell(i, "IvaPct", e.target.value)
-                      }
+                      onChange={(e) => onChangeCell(i, "IvaPct", e.target.value)}
                     />
                   )}
                 </td>
 
-                {/* Días crédito por línea */}
                 <td className={`${styles.colDias} ${styles.num}`}>
                   {r.__summary ? (
                     <span className={styles.inputReadonly}>—</span>
                   ) : (
                     <input
-                      disabled={!editable}
-                      className={`${styles.input} ${styles.inputNum}`}
-                      type="number"
-                      min={0}
-                      value={r.DiasPago ?? 0}
-                      onChange={(e) =>
-                        onChangeCell(i, "DiasPago", e.target.value)
-                      }
-                      title="Si no se define, aplica el global."
-                    />
+                    disabled={true}
+                    readOnly
+                    className={`${styles.input} ${styles.inputNum}`}
+                    type="number"
+                    min={0}
+                    value={r.DiasPago ?? 0}
+                    title="Días de crédito tomados del proveedor"
+                  />
                   )}
                 </td>
 
-                {/* IVA */}
                 <td className={`${styles.colIva} ${styles.num}`}>
                   {r.__provLocked ? "—" : Number(r.Iva || 0).toFixed(2)}
                 </td>
 
-                {/* Total */}
                 <td className={`${styles.colTotal} ${styles.num}`}>
                   {r.__provLocked ? "—" : Number(r.Total || 0).toFixed(2)}
                 </td>
 
-                {/* Acciones por fila */}
                 <td className={styles.colActions}>
                   {!r.__summary && (
                     <button
@@ -1062,7 +1077,6 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
         </table>
       </div>
 
-      {/* Totales */}
       <div className={styles.totals}>
         <div className={styles.totalBox}>
           <div className={styles.totalLabel}>Subtotal</div>
@@ -1078,7 +1092,121 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
         </div>
       </div>
 
-      {/* ✅ NUEVO: Adjuntos factura */}
+      {facturaCabecera && (
+        <div className={styles.card} style={{ marginTop: 14 }}>
+          <div className={styles.sectionTitle}>Factura SAP asociada</div>
+
+          <div className={styles.formGrid}>
+            <div>
+              <strong>Proveedor:</strong><br />
+              <span>{facturaCabecera.CardName || "—"}</span>
+            </div>
+
+            <div>
+              <strong>CardCode:</strong><br />
+              <span>{facturaCabecera.CardCode || "—"}</span>
+            </div>
+
+            <div>
+              <strong>Serie:</strong><br />
+              <span>{facturaCabecera.Serie || "—"}</span>
+            </div>
+
+            <div>
+              <strong>Punto emisión:</strong><br />
+              <span>{facturaCabecera.PtoEmi || "—"}</span>
+            </div>
+
+            <div>
+              <strong>Secuencial:</strong><br />
+              <span>{facturaCabecera.Secuencial || "—"}</span>
+            </div>
+
+            <div>
+              <strong>NumAtCard:</strong><br />
+              <span>{facturaCabecera.NumAtCard || "—"}</span>
+            </div>
+
+            <div>
+              <strong>Fecha documento:</strong><br />
+              <span>{facturaCabecera.DocDate || "—"}</span>
+            </div>
+
+            <div>
+              <strong>Fecha vencimiento:</strong><br />
+              <span>{facturaCabecera.DocDueDate || "—"}</span>
+            </div>
+
+            <div>
+              <strong>Autorización:</strong><br />
+              <span>{facturaCabecera.NroAutorizacion || "—"}</span>
+            </div>
+
+            <div>
+              <strong>Forma pago:</strong><br />
+              <span>{facturaCabecera.FormaPago || "—"}</span>
+            </div>
+
+            <div>
+              <strong>Tipo pago:</strong><br />
+              <span>{facturaCabecera.TipoPago || "—"}</span>
+            </div>
+
+            <div>
+              <strong>Total SAP:</strong><br />
+              <span>
+                {Number(facturaCabecera.DocTotal || 0).toLocaleString("es-EC", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </span>
+            </div>
+
+            <div className={styles.gridFull}>
+              <strong>Comentarios:</strong><br />
+              <span>{facturaCabecera.Comments || "—"}</span>
+            </div>
+          </div>
+
+          {!!facturaDetalle?.length && (
+            <div className={styles.tableWrapper} style={{ marginTop: 12 }}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Línea</th>
+                    <th>Item</th>
+                    <th>Descripción</th>
+                    <th className={styles.num}>Cant.</th>
+                    <th className={styles.num}>Precio</th>
+                    <th className={styles.num}>Desc.</th>
+                    <th>Impuesto</th>
+                    <th>Gasto</th>
+                    <th>Dato adicional</th>
+                    <th className={styles.num}>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {facturaDetalle.map((r, i) => (
+                    <tr key={i}>
+                      <td>{r.LineNum ?? i}</td>
+                      <td>{r.ItemCode || "—"}</td>
+                      <td>{r.ItemDescription || "—"}</td>
+                      <td className={styles.num}>{Number(r.Quantity || 0).toFixed(2)}</td>
+                      <td className={styles.num}>{Number(r.UnitPrice || 0).toFixed(2)}</td>
+                      <td className={styles.num}>{Number(r.DiscountPercent || 0).toFixed(2)}</td>
+                      <td>{r.TaxCode || "—"}</td>
+                      <td>{r.ConceptoGasto || "—"}</td>
+                      <td>{r.DatoAdicional || "—"}</td>
+                      <td className={styles.num}>{Number(r.LineTotal || 0).toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className={styles.card} style={{ marginTop: 14 }}>
         <div className={styles.sectionTitle}>Adjuntos de factura</div>
 
@@ -1110,7 +1238,6 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
         )}
       </div>
 
-      {/* Mensajes de estado */}
       {!editable && (
         <p className={styles.note}>
           * Edición deshabilitada
@@ -1132,14 +1259,20 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
         </p>
       )}
 
-      {ocAprob?.estado === "APROBADA" && (
+      {ocAprob?.estado === "APROBADA" && ocAprob?.existe && (
         <p className={styles.note}>
-          * Aprobada (nivel {ocAprob.nivel_max}/{ocAprob.nivel_max}). Ya no se puede modificar el detalle; puedes
-          Facturar o Anular.
+          * Aprobada (nivel {ocAprob.nivel_max}/{ocAprob.nivel_max}). Ya no se puede modificar el detalle; puedes Facturar o Anular.
         </p>
       )}
 
-      {/* ✅ Modal Subir Factura */}
+      {!ocAprob?.existe && (
+  <p className={styles.note}>
+    {esMensual
+      ? "* Esta OC proviene de una solicitud mensual, por lo tanto no requiere aprobación de Jefe ni CEO. Puedes facturar directamente."
+      : "* Esta OC no tiene flujo de aprobación. Puedes facturar directamente."}
+  </p>
+)}
+
       {showUploadFactura && (
         <div className={styles.modalOverlay} role="dialog" aria-modal="true">
           <div className={styles.modalBox}>
@@ -1206,7 +1339,6 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
         </div>
       )}
 
-      {/* ✅ Modal de datos para facturar (elige por Tipo OC) */}
       {showFacturaForm && factTipo === "SERVICIO" && (
         <div className={styles.modalOverlay} role="dialog" aria-modal="true">
           <div className={styles.modalBox}>
@@ -1309,7 +1441,6 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
         </div>
       )}
 
-      {/* ✅ Modal de PREVIEW (archivo aparte) */}
       <FacturaPreviewModal
         open={previewOpen}
         data={previewData ? { ...previewData, OcId: ocId, Tipo: tipoOC } : null}
@@ -1322,6 +1453,12 @@ const [factProveedorNom, setFactProveedorNom] = useState("");
         rolId={user?.RolId}
         modo="ordenes"
       />
+      {provInfo && (
+        <ProveedorInfoModal
+          proveedor={provInfo}
+          onClose={() => setProvInfo(null)}
+        />
+      )}
     </div>
   );
 }

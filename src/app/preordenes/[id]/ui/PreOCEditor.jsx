@@ -463,26 +463,51 @@ export default function PreOCEditor({ preoc, detalleInicial }) {
           <div className={styles.proveedorWrapper}>
             {/* ✅ Tooltip SOLO de proveedor */}
             <div style={{ width: "100%" }} title={tipProveedor}>
-              <ProveedorPicker
+             <ProveedorPicker
   disabled={!editable}
   value={r.Proveedor || ""}
-  title={tipProveedor}   // ✅ AQUÍ
+  title={tipProveedor}
   onChange={(nombre, prov) => {
-    onChange(realIndex, "Proveedor", nombre);
+    setDetalle((prev) => {
+      const rows = [...prev];
 
-    if (prov) {
-      onChange(realIndex, "ProveedorId", prov.IdProveedor);
-      onChange(realIndex, "CodigoSAP", prov.CodigoSAP);
-      onChange(realIndex, "EmailAddress", prov.EmailAddress || "");
-      onChange(realIndex, "Phone1", prov.Phone1 || "");
+      const proveedorData = {
+        Proveedor: nombre || "",
+        ProveedorId: prov?.IdProveedor ?? "",
+        CodigoSAP: prov?.CodigoSAP ?? "",
+        EmailAddress: prov?.EmailAddress || "",
+        Phone1: prov?.Phone1 || "",
+        DiasPago:
+          typeof prov?.DiasCredito === "number"
+            ? prov.DiasCredito
+            : 0,
+        FormaPago: prov?.U_SYP_FPAGO || "01",
+      };
 
-      if (typeof prov.DiasCredito === "number") {
-        onChange(realIndex, "DiasPago", prov.DiasCredito);
-      }
-      if (prov.U_SYP_FPAGO) {
-        onChange(realIndex, "FormaPago", prov.U_SYP_FPAGO);
-      }
-    }
+      rows.forEach((row, idx) => {
+        const tieneProveedor =
+          !!(row.Proveedor || row.ProveedorId || row.CodigoSAP);
+
+        // La fila donde seleccionaste: siempre se actualiza
+        if (idx === realIndex) {
+          rows[idx] = recalcRow({
+            ...row,
+            ...proveedorData,
+          });
+          return;
+        }
+
+        // Las demás: solo si están vacías
+        if (!tieneProveedor) {
+          rows[idx] = recalcRow({
+            ...row,
+            ...proveedorData,
+          });
+        }
+      });
+
+      return rows;
+    });
   }}
 />
 

@@ -6,7 +6,7 @@ export const API_BASE =
 
 // Helper para armar URLs de forma segura
 function apiUrl(path, params) {
-  const url = new URL(path, API_BASE); // concatena BASE + path
+  const url = new URL(path, API_BASE);
   if (params && typeof params === "object") {
     for (const [k, v] of Object.entries(params)) {
       if (v !== undefined && v !== null && v !== "") {
@@ -28,19 +28,26 @@ async function safeText(res) {
   }
 }
 
-// --- helpers estrictos para JSON (evitan "Unexpected token '<' ...") ---
+// Helper estricto para JSON
 async function fetchJSON(pathOrUrl, opts = {}) {
   const url = pathOrUrl.startsWith("http") ? pathOrUrl : apiUrl(pathOrUrl);
-  const res = await fetch(url, { cache: "no-store", ...opts });
+
+  const res = await fetch(url, {
+    cache: "no-store",
+    ...opts,
+  });
+
   const text = await res.text();
   const ct = res.headers.get("content-type") || "";
 
   if (!res.ok) {
     throw new Error(`HTTP ${res.status} ${res.statusText}: ${text.slice(0, 300)}`);
   }
+
   if (!ct.includes("application/json")) {
     throw new Error(`Respuesta no JSON (ct=${ct}): ${text.slice(0, 300)}`);
   }
+
   try {
     return JSON.parse(text);
   } catch (e) {
@@ -77,7 +84,12 @@ export async function getOverview(userId) {
 /* ================================
  * Órdenes de Compra (OC)
  * ================================ */
-export async function getOCList({ page = 1, pageSize = 20, estado = "", q = "" } = {}) {
+export async function getOCList({
+  page = 1,
+  pageSize = 20,
+  estado = "",
+  q = "",
+} = {}) {
   const url = apiUrl("/api/oc", { page, pageSize, estado, q });
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) throw new Error(await safeText(res));
@@ -127,6 +139,18 @@ export async function updateOCState(idOC, body) {
   return res.json();
 }
 
+export async function updatePagoOC(idOC, payload) {
+  const url = apiUrl(`/api/oc/${idOC}/pago`);
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await safeText(res));
+  return res.json();
+}
+
 /* ================================
  * Aprobaciones (genérico)
  * ================================ */
@@ -155,10 +179,32 @@ export async function postApprovalsDecide(actorId, approvalIds, action, comentar
 }
 
 /* ================================
- * Prefactura OC (flujo de aprobación para facturar)
+ * Aprobación a nivel OC
+ * ================================ */
+export async function requestOCApproval(idOC, payload) {
+  const res = await fetch(`${API_BASE}/api/oc/${idOC}/request-approval`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload || {}),
+    cache: "no-store",
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error || "Error solicitando aprobación OC");
+  return data;
+}
+
+export async function getOCApprovalStatus(idOC) {
+  const url = apiUrl(`/api/oc/${idOC}/approval/status`);
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(await safeText(res));
+  return res.json();
+}
+
+/* ================================
+ * Prefactura OC
  * ================================ */
 export async function createPrefacturaOC(idOC, body) {
-  // Backend expone /api/ov/:id/prefactura
   const url = apiUrl(`/api/ov/${idOC}/prefactura`);
   const res = await fetch(url, {
     method: "POST",
@@ -177,7 +223,6 @@ export async function getPrefacturaStatus(idOC) {
   return res.json();
 }
 
-// === NUEVO: listar prefacturas OC pendientes para un usuario ===
 export async function getOVPending(userId) {
   const url = apiUrl("/api/ov/prefactura/pending", { userId });
   const res = await fetch(url, { cache: "no-store" });
@@ -185,7 +230,6 @@ export async function getOVPending(userId) {
   return res.json();
 }
 
-// === NUEVO: aprobar prefactura (nivel actual) ===
 export async function approveOVDraft(idDraft, UsuarioId, Comentario = "") {
   const url = apiUrl(`/api/ov/prefactura/${idDraft}/aprobar`);
   const res = await fetch(url, {
@@ -198,7 +242,6 @@ export async function approveOVDraft(idDraft, UsuarioId, Comentario = "") {
   return res.json();
 }
 
-// === NUEVO: rechazar prefactura (nivel actual) ===
 export async function rejectOVDraft(idDraft, UsuarioId, Comentario = "") {
   const url = apiUrl(`/api/ov/prefactura/${idDraft}/rechazar`);
   const res = await fetch(url, {
@@ -211,71 +254,46 @@ export async function rejectOVDraft(idDraft, UsuarioId, Comentario = "") {
   return res.json();
 }
 
-export async function updatePagoOC(idOC, payload) {
-  // usando apiUrl por consistencia
-  const url = apiUrl(`/api/oc/${idOC}/pago`);
-  const res = await fetch(url, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    cache: "no-store",
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) throw new Error(await safeText(res));
-  return res.json();
-}
-
-/* ================================
- * (NUEVO) Aprobación a nivel OC
- * ================================ */
-// === Solicitar aprobación de OC al guardar detalle ===
-export async function requestOCApproval(idOC, { autoApprove = false } = {}) {
-  const url = apiUrl(`/api/oc/${idOC}/request-approval`);
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    cache: "no-store",
-    body: JSON.stringify({ autoApprove }),
-  });
-  if (!res.ok) throw new Error(await safeText(res));
-  return res.json();
-}
-
-// === Estado de la aprobación de OC ===
-export async function getOCApprovalStatus(idOC) {
-  const url = apiUrl(`/api/oc/${idOC}/approval/status`);
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(await safeText(res));
-  return res.json();
-}
-
-/* ================================
- * (NUEVO) Preview de prefactura SAP
- * ================================ */
 export async function previewPrefacturaOC(idOC, payload) {
   const res = await fetch(`${API_BASE}/api/oc/${idOC}/prefactura/preview`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
     cache: "no-store",
   });
 
-  const data = await res.json();
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.error || "Error al previsualizar prefactura");
   return data;
 }
 
-/* ================================
- * (NUEVO) Pre-Órdenes de Compra
- * ================================ */
+export async function persistFacturaSnapshotOC(idOC, docEntry, payload) {
+  return fetchJSON(apiUrl(`/api/oc/${idOC}/prefactura/preview/${docEntry}`), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
 
-// Crear una Pre-Orden copiando una Solicitud
-export async function listPreOC({ page = 1, pageSize = 20, estado = "", q = "" } = {}) {
-  const url = apiUrl("/api/preoc", { page, pageSize, estado, q });
+/* ================================
+ * Pre-Órdenes
+ * ================================ */
+export async function listPreOCs({
+  page = 1,
+  pageSize = 20,
+  estado = "",
+  q = "",
+  userId = "",
+} = {}) {
+  const url = apiUrl("/api/preoc", { page, pageSize, estado, q, userId });
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) throw new Error(await safeText(res));
   return res.json();
+}
+
+// Alias por compatibilidad
+export async function listPreOC(params = {}) {
+  return listPreOCs(params);
 }
 
 export async function getPreOC(idPreOC) {
@@ -299,11 +317,14 @@ export async function replacePreOCDetail(idPreOC, detalle) {
 
 export async function splitPreOC(idPreOC) {
   const url = apiUrl(`/api/preoc/${idPreOC}/generar-oc`);
-  const res = await fetch(url, { method: "POST", cache: "no-store" });
+  const res = await fetch(url, {
+    method: "POST",
+    cache: "no-store",
+  });
   if (!res.ok) throw new Error(await safeText(res));
   return res.json();
 }
-// === NUEVO: actualizar cabecera de Pre-Orden (días/forma pago)
+
 export async function updatePreOCPago(idPreOC, payload) {
   const url = apiUrl(`/api/preoc/${idPreOC}/pago`);
   const res = await fetch(url, {
@@ -316,21 +337,72 @@ export async function updatePreOCPago(idPreOC, payload) {
   return res.json();
 }
 
-// Lista todos los borradores para el módulo Facturas SAP
-// Lista todos los borradores para el módulo Facturas SAP
+export async function toggleFavoritePreOC(userId, preocId, fav) {
+  const url = apiUrl(`/api/preoc/favorites/toggle`);
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+    body: JSON.stringify({ userId, preocId, fav }),
+  });
+  if (!res.ok) throw new Error(await safeText(res));
+  return res.json();
+}
+
+export async function duplicatePreOC(idPreOC, payload) {
+  const url = apiUrl(`/api/preoc/${idPreOC}/duplicar`);
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+    body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok) throw new Error(await safeText(res));
+  return res.json();
+}
+
+export async function createPreOCDirect({ userId, departamentoId, tipo, comentario }) {
+  const url = apiUrl(`/api/preoc`);
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+    body: JSON.stringify({ userId, departamentoId, tipo, comentario }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+  return data;
+}
+
+export async function unifyPreOCs(idsPreOC = [], comentario = "") {
+  const url = apiUrl(`/api/preoc/unificar`);
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+    body: JSON.stringify({ idsPreOC, comentario }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+  return data;
+}
+
+/* ================================
+ * Facturas SAP
+ * ================================ */
 export async function getFacturasSap() {
   const url = apiUrl("/api/facturas-sap");
   const res = await fetch(url, { cache: "no-store" });
 
   if (!res.ok) {
-    // muestra status + texto real del backend
     throw new Error(await safeText(res));
   }
 
   return res.json();
 }
 
-// Trae un borrador específico por DocEntry
 export async function getFacturaSapByDraft(docEntry) {
   const url = apiUrl(`/api/facturas-sap/${docEntry}`);
   const res = await fetch(url, { cache: "no-store" });
@@ -342,7 +414,11 @@ export async function getFacturaSapByDraft(docEntry) {
   return res.json();
 }
 
-export async function uploadFacturaAdjuntoOC(idOc, { Establecimiento, PuntoEmision, Secuencial, file }, userEmail) {
+export async function uploadFacturaAdjuntoOC(
+  idOc,
+  { Establecimiento, PuntoEmision, Secuencial, file },
+  userEmail
+) {
   const fd = new FormData();
   fd.append("Establecimiento", Establecimiento);
   fd.append("PuntoEmision", PuntoEmision);
@@ -359,18 +435,17 @@ export async function uploadFacturaAdjuntoOC(idOc, { Establecimiento, PuntoEmisi
   });
 
   if (!res.ok) throw new Error(await safeText(res));
-  return await res.json();
+  return res.json();
 }
 
 export async function listFacturaAdjuntosOC(idOc) {
   const url = apiUrl(`/api/oc/${idOc}/factura/adjuntos`);
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) throw new Error(await safeText(res));
-  return await res.json();
+  return res.json();
 }
 
 export function downloadFacturaAdjuntoOC(idOc, idAdj) {
-  // redirige a backend que a su vez redirige a downloadUrl temporal
   return apiUrl(`/api/oc/${idOc}/factura/adjunto/${idAdj}/download`);
 }
 
@@ -380,7 +455,7 @@ export async function getFacturaInfoOC(idOC) {
     cache: "no-store",
   });
 
-  const data = await res.json();
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.error || "Error al obtener factura-info");
   return data;
 }
@@ -392,17 +467,40 @@ export async function saveFacturaInfoOC(idOC, payload) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify(payload),
+    cache: "no-store",
   });
 
-  const data = await res.json();
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.error || "Error al guardar factura-info");
   return data;
 }
-// ================================
-// PROVEEDORES (SAP) - NUEVO MODULO
-// ================================
+
+export async function validarFacturaDuplicadaOC({
+  establecimiento,
+  puntoEmision,
+  secuencial,
+  excludeIdOC,
+}) {
+  const url = apiUrl("/api/oc/factura-existe", {
+    establecimiento,
+    puntoEmision,
+    secuencial,
+    excludeIdOC,
+  });
+
+  return fetchJSON(url);
+}
+
+/* ================================
+ * Proveedores SAP
+ * ================================ */
 export async function getProveedoresSap({ q = "", top = 50 } = {}) {
   const url = apiUrl("/api/proveedores-sap", { q, top });
+  return fetchJSON(url, { method: "GET" });
+}
+
+export async function getProveedorSapByCardCode(cardCode) {
+  const url = apiUrl(`/api/proveedores-sap/${encodeURIComponent(cardCode)}`);
   return fetchJSON(url, { method: "GET" });
 }
 
@@ -430,9 +528,10 @@ export async function getFormasPago() {
   return fetchJSON(url, { method: "GET" });
 }
 
-// ✅ Solicitar cambio (crea PENDING + envía correo a Contabilidad)
 export async function solicitarCambioProveedor(cardcode, payload, requestedBy) {
-  const url = apiUrl(`/api/proveedores-sap/${encodeURIComponent(cardcode)}/solicitar-cambio`);
+  const url = apiUrl(
+    `/api/proveedores-sap/${encodeURIComponent(cardcode)}/solicitar-cambio`
+  );
   return fetchJSON(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -442,19 +541,10 @@ export async function solicitarCambioProveedor(cardcode, payload, requestedBy) {
     }),
   });
 }
-
-export async function createPreOCDirect({ userId, departamentoId, tipo, comentario }) {
-  const base =
-    process.env.NEXT_PUBLIC_BACKEND_URL || "https://back-compras-ec.onrender.com";
-
-  const res = await fetch(`${base}/api/preoc`, {
-    method: "POST",
+export async function updateFacturaSapDraft(idOC, docEntry, payload) {
+  return fetchJSON(apiUrl(`/api/oc/${idOC}/prefactura/preview/${docEntry}`), {
+    method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ userId, departamentoId, tipo, comentario }),
+    body: JSON.stringify(payload),
   });
-
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-  return data;
 }
-

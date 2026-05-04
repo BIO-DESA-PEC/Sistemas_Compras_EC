@@ -3,10 +3,15 @@
 import { useState, useMemo, useEffect } from 'react';
 import styles from './FacturaPreviewModal.module.css';
 import SearchSelect from '@/components/SearchSelect';
+import {
+  persistFacturaSnapshotOC,
+  updateFacturaSapDraft,
+  updateOCState
+} from '@/app/lib/backend';
 
 const IVA_OPTS = [
   { value: 'IVA_15', label: 'IVA 15%' },
-  { value: 'IVA_0',  label: 'IVA 0%'  },
+  { value: 'IVA_0', label: 'IVA 0%' },
 ];
 
 const SUSTENTO_OPTS = [
@@ -19,7 +24,11 @@ function n2(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }
-function str(v) { return (v ?? '').toString(); }
+
+function str(v) {
+  return (v ?? '').toString();
+}
+
 const t = (v) => String(v ?? '').trim();
 
 function titleFromOpts(value, opts = []) {
@@ -64,10 +73,10 @@ export default function FacturaPreviewModal({
   const canEditGasto = isAdmin || isData;
   const canEditDimensiones = isAdmin || isData;
   const requiereDimensiones = isAdmin || isData;
-
+  const [borradorGuardadoOk, setBorradorGuardadoOk] = useState(false);
   const [finalizado, setFinalizado] = useState(false);
   const [yaTeniaGastoAlAbrir, setYaTeniaGastoAlAbrir] = useState(false);
-
+  const [tipoVisual, setTipoVisual] = useState('SERVICIO');
   const readOnlyTotal = (modo === "facturas_sap") && (finalizado || yaTeniaGastoAlAbrir);
   const isLock = (modo === 'facturas_sap') && !!lockSoloGasto && !readOnlyTotal;
 
@@ -110,10 +119,117 @@ export default function FacturaPreviewModal({
       FormaPago: s(c.FormaPago || '20'),
       TipoPago: s(c.TipoPago || '01'),
       DocTotal: Number(c.DocTotal ?? d?.Cabecera?.DocTotal ?? 0),
+      DiscountPercent: Number(c.DiscountPercent ?? 0),
+      TotalDiscount: Number(c.TotalDiscount ?? 0),
     };
   };
 
   const [cabecera, setCabecera] = useState(() => buildCabecera(data));
+
+  const [descuentoTotalFactura, setDescuentoTotalFactura] = useState("");
+  const [descuentoDistribuidoInfo, setDescuentoDistribuidoInfo] = useState(null);
+
+  function limpiarComentarioDescuento(txt = "") {
+    return String(txt || "")
+      .replace(/\s*\|\s*Descuento total factura:\s*\$?\s*[\d.,]+/gi, "")
+      .replace(/\n?Descuento total factura:\s*\$?\s*[\d.,]+/gi, "")
+      .trim();
+  }
+
+  function normalizarComentarioBase(txt = "", claseActual = "SERVICIO") {
+    const limpio = limpiarComentarioDescuento(txt)
+      .replace(/\s*\|\s*BORRADOR DE TIPO (ARTICULO|ARTÍCULO|SERVICIO)/gi, "")
+      .replace(/^BORRADOR DE TIPO (ARTICULO|ARTÍCULO|SERVICIO)\s*\|?\s*/gi, "")
+      .trim();
+
+    return limpio
+      ? `BORRADOR DE TIPO ${claseActual} | ${limpio}`
+      : `BORRADOR DE TIPO ${claseActual}`;
+  }
+
+  function construirComentarioConDescuento(baseComments, monto, claseActual) {
+    const comentarioBase = normalizarComentarioBase(baseComments || "", claseActual);
+    const valor = Number(monto || 0);
+
+    return valor > 0
+      ? `${comentarioBase} | Descuento total factura: $${valor.toFixed(2)}`
+      : comentarioBase;
+  }
+
+  function setComentarioConDescuento(valor) {
+    setCabecera((prev) => ({
+      ...prev,
+      Comments: construirComentarioConDescuento(prev.Comments, valor, clase),
+    }));
+  }
+
+  function aplicarDescuentoTotalFactura(valorIngresado, opts = {}) {
+    if (readOnlyTotal || isLock) return;
+
+    const descuentoTotal = Math.max(0, n2(valorIngresado));
+    const silent = !!opts.silent;
+
+    const subtotalBase = rows.reduce(
+      (acc, r) => acc + Math.max(0, n2(r.Cantidad) * n2(r.Precio)),
+      0
+    );
+
+    if (subtotalBase <= 0) {
+      setMsg({
+        type: "err",
+        text: "Debes ingresar cantidades y precios válidos antes de aplicar descuento total.",
+      });
+      return;
+    }
+
+    if (descuentoTotal > subtotalBase) {
+      setMsg({
+        type: "err",
+        text: `El descuento no puede ser mayor al subtotal ($${subtotalBase.toFixed(2)})`,
+      });
+      return;
+    }
+
+    const pctCabecera =
+      subtotalBase > 0 ? (descuentoTotal / subtotalBase) * 100 : 0;
+
+    setDescuentoTotalFactura(descuentoTotal ? String(descuentoTotal) : "");
+
+    // si el descuento va en cabecera, las líneas quedan en 0
+    setRows((prev) =>
+      prev.map((r) => ({
+        ...r,
+        Descuento: 0,
+      }))
+    );
+
+    setCabecera((prev) => ({
+      ...prev,
+      TotalDiscount: +descuentoTotal.toFixed(2),
+      DiscountPercent: +pctCabecera.toFixed(6),
+      Comments: construirComentarioConDescuento(prev.Comments, descuentoTotal, clase),
+    }));
+
+    if (descuentoTotal > 0) {
+      setDescuentoDistribuidoInfo({
+        descuentoAplicado: +descuentoTotal.toFixed(2),
+        lineasAfectadas: rows.length,
+        subtotalBase,
+      });
+    } else {
+      setDescuentoDistribuidoInfo(null);
+    }
+
+    if (!silent) {
+      setMsg({
+        type: "ok",
+        text:
+          descuentoTotal > 0
+            ? `Descuento total en cabecera aplicado: $${descuentoTotal.toFixed(2)}`
+            : "Se eliminó el descuento total de la factura.",
+      });
+    }
+  }
 
   /* ===== LINEAS ===== */
   const [rows, setRows] = useState(() =>
@@ -257,48 +373,45 @@ export default function FacturaPreviewModal({
       }
     ]));
   };
-const copiarDatoAdicional = (ix, modo = 'vacias') => {
-  if (readOnlyTotal) return;
 
-  const valorBase = String(rows[ix]?.DatoAdicional || '').trim();
-  if (!valorBase) return;
+  const copiarDatoAdicional = (ix, modo = 'vacias') => {
+    if (readOnlyTotal) return;
 
-  setRows(prev =>
-    prev.map((r, i) => {
-      if (i === ix) return r;
+    const valorBase = String(rows[ix]?.DatoAdicional || '').trim();
+    if (!valorBase) return;
 
-      if (modo === 'todas') {
-        return { ...r, DatoAdicional: valorBase };
-      }
+    setRows(prev =>
+      prev.map((r, i) => {
+        if (i === ix) return r;
 
-      const actual = String(r?.DatoAdicional || '').trim();
-      if (!actual) {
-        return { ...r, DatoAdicional: valorBase };
-      }
+        if (modo === 'todas') {
+          return { ...r, DatoAdicional: valorBase };
+        }
 
-      return r;
-    })
-  );
+        const actual = String(r?.DatoAdicional || '').trim();
+        if (!actual) {
+          return { ...r, DatoAdicional: valorBase };
+        }
 
-  setMsg({
-    type: 'ok',
-    text:
-      modo === 'todas'
-        ? 'Dato adicional copiado a todas las demás líneas.'
-        : 'Dato adicional copiado a las líneas vacías.'
-  });
-};
+        return r;
+      })
+    );
 
-const limpiarMsgLuego = () => {
-  setTimeout(() => {
-    setMsg(null);
-  }, 2200);
-};
-useEffect(() => {
-  if (!msg) return;
-  const id = setTimeout(() => setMsg(null), 2200);
-  return () => clearTimeout(id);
-}, [msg]);
+    setMsg({
+      type: 'ok',
+      text:
+        modo === 'todas'
+          ? 'Dato adicional copiado a todas las demás líneas.'
+          : 'Dato adicional copiado a las líneas vacías.'
+    });
+  };
+
+  useEffect(() => {
+    if (!msg) return;
+    const id = setTimeout(() => setMsg(null), 2200);
+    return () => clearTimeout(id);
+  }, [msg]);
+
   const removeRow = (ix) => {
     if (readOnlyTotal || isLock) return;
     setRows(prev => prev.filter((_, i) => i !== ix));
@@ -315,8 +428,22 @@ useEffect(() => {
       return;
     }
 
-    const concepto = g.concepto ?? g.U_SYP_CONCEPTO ?? '';
-    const cuenta = g.cuenta ?? g.U_SYP_CUENTA ?? '';
+    let concepto = g.concepto ?? g.U_SYP_CONCEPTO ?? '';
+    if (!concepto) {
+      const raw = String(g.gasto ?? g.Name ?? '');
+      
+      // extraer texto después del —
+      const parts = raw.split('—');
+      concepto = parts.length > 1 ? parts[1].trim() : raw;
+    }
+
+    let cuenta = g.cuenta ?? g.U_SYP_CUENTA ?? '';
+
+      if (!cuenta) {
+        const raw = String(g.gasto ?? g.Name ?? '');
+        const match = raw.match(/(\d{6,})/);
+        cuenta = match ? match[1] : '';
+      }
     const gastoCod = g.gasto ?? g.Name ?? '';
 
     if (isLock) {
@@ -325,30 +452,40 @@ useEffect(() => {
       return;
     }
 
-    updateRow(i, { ConceptoGasto: gastoCod, Descripcion: concepto, Cuenta: cuenta });
-    applyToEmpty("ConceptoGasto", gastoCod);
+    updateRow(i, { 
+    ConceptoGasto: gastoCod, 
+    Descripcion: concepto, 
+    Cuenta: cuenta 
+    });
+
+  applyToEmpty("ConceptoGasto", gastoCod);
+  applyToEmpty("Cuenta", cuenta);
+  applyToEmpty("Descripcion", concepto);
   }
 
   /* =========================================================
      Effects
   ========================================================= */
   useEffect(() => {
-    if (!open || !data) return;
+  if (!open || !data) return;
 
-    const tipo = (data?.TipoOC || '').toString().trim().toUpperCase();
-    if (!tipo) return;
+  const tipo = (data?.TipoOC || '').toString().trim().toUpperCase();
 
-    if (tipo === 'ARTICULO' || tipo === 'ARTÍCULO') {
-      setClase('ARTICULO');
-      if (!correoAutoEnviado && !isLock && !readOnlyTotal) {
-        setCorreoAutoEnviado(true);
-        enviarCorreoArticulo();
-      }
-    } else {
-      setClase('SERVICIO');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, data?.TipoOC, correoAutoEnviado, isLock, readOnlyTotal]);
+  // Solo mostrar arriba como artículo si viene así,
+  // pero internamente el modal sigue trabajando como SERVICIO
+  if (tipo === 'ARTICULO' || tipo === 'ARTÍCULO') {
+    setTipoVisual('ARTICULO');
+  } else {
+    setTipoVisual('SERVICIO');
+  }
+
+  // SIEMPRE mantener la lógica interna como SERVICIO
+  setClase('SERVICIO');
+
+  // NO enviar correo automático
+  setCorreoAutoEnviado(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [open, data?.TipoOC]);
 
   useEffect(() => {
     if (!open) return;
@@ -436,13 +573,68 @@ useEffect(() => {
       CostingCode2: String(ln.CostingCode2 || ''),
       CostingCode3: String(ln.CostingCode3 || ''),
       IdSustentoTributario: String(
-        ln.U_SYP_CODIDTRD || cabecera.IdSustentoTributario
+        ln.U_SYP_CODIDTRD || data?.Cabecera?.IdSustentoTributario || '01'
       ),
       ConceptoGasto: String(ln.ConceptoGasto || ''),
     })));
 
+    const totalDesc = Number(data?.Cabecera?.TotalDiscount ?? 0);
+    const comentarioInicial = construirComentarioConDescuento(
+      data?.Cabecera?.Comments || '',
+      totalDesc,
+      (data?.TipoOC || '').toString().trim().toUpperCase() === 'ARTICULO' ? 'ARTICULO' : 'SERVICIO'
+    );
+
+    setCabecera((prev) => ({
+      ...prev,
+      ...buildCabecera(data),
+      DiscountPercent: Number(data?.Cabecera?.DiscountPercent ?? 0),
+      TotalDiscount: totalDesc,
+      Comments: comentarioInicial,
+    }));
+
     setFinalizado(false);
-  }, [data?.DocEntry, cabecera.IdSustentoTributario]);
+    setDescuentoTotalFactura(totalDesc > 0 ? String(totalDesc) : "");
+    setDescuentoDistribuidoInfo(null);
+  }, [data?.DocEntry]);
+
+  useEffect(() => {
+    if (!open || readOnlyTotal || isLock) return;
+
+    const descuento = n2(descuentoTotalFactura);
+    if (descuento < 0) return;
+
+    const subtotalBase = rows.reduce(
+      (acc, r) => acc + Math.max(0, n2(r.Cantidad) * n2(r.Precio)),
+      0
+    );
+
+    if (subtotalBase <= 0) {
+      setCabecera((prev) => ({
+        ...prev,
+        TotalDiscount: 0,
+        DiscountPercent: 0,
+      }));
+      return;
+    }
+
+    if (descuento > subtotalBase) return;
+
+    const pctCabecera =
+      subtotalBase > 0 ? (descuento / subtotalBase) * 100 : 0;
+
+    setCabecera((prev) => ({
+      ...prev,
+      TotalDiscount: +descuento.toFixed(2),
+      DiscountPercent: +pctCabecera.toFixed(6),
+    }));
+  }, [
+    open,
+    readOnlyTotal,
+    isLock,
+    descuentoTotalFactura,
+    rows.map(r => `${n2(r.Cantidad)}|${n2(r.Precio)}`).join("||")
+  ]);
 
   /* ===== OPTIONS ===== */
   const dimOptsLinea = useMemo(
@@ -473,22 +665,39 @@ useEffect(() => {
     })
   ), [gastos]);
 
+  const subtotalBrutoActual = useMemo(() => {
+    return rows.reduce((acc, r) => {
+      return acc + Math.max(0, n2(r.Cantidad) * n2(r.Precio));
+    }, 0);
+  }, [rows]);
+
   /* ===== TOTALES ===== */
   const resumen = useMemo(() => {
-    let sub = 0, ivaBase = 0;
+    let subtotalBruto = 0;
+    let ivaBaseBruta = 0;
 
     for (const r of rows) {
       const base = Math.max(0, n2(r.Cantidad) * n2(r.Precio));
-      const disc = base * (n2(r.Descuento) / 100);
-      const line = Math.max(0, base - disc);
-      sub += line;
-      if ((r.TaxCode || 'IVA_15') !== 'IVA_0') ivaBase += line;
+      subtotalBruto += base;
+      if ((r.TaxCode || 'IVA_15') !== 'IVA_0') ivaBaseBruta += base;
     }
 
-    const iva = +(ivaBase * 0.15).toFixed(2);
+    const descuentoCabecera = n2(cabecera.TotalDiscount);
+    const sub = Math.max(0, subtotalBruto - descuentoCabecera);
+
+    const proporcionIva =
+      subtotalBruto > 0 ? ivaBaseBruta / subtotalBruto : 0;
+
+    const ivaBaseNeta = sub * proporcionIva;
+    const iva = +(ivaBaseNeta * 0.15).toFixed(2);
     const total = +(sub + iva).toFixed(2);
-    return { sub: +sub.toFixed(2), iva, total };
-  }, [rows]);
+
+    return {
+      sub: +sub.toFixed(2),
+      iva,
+      total,
+    };
+  }, [rows, cabecera.TotalDiscount]);
 
   async function enviarCorreoArticulo() {
     try {
@@ -515,121 +724,224 @@ useEffect(() => {
   }
 
   async function guardarBorrador() {
-    try {
-      setSending(true);
-      setMsg(null);
+  if (sending) return;
 
-      const baseUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "https://back-compras-ec.onrender.com";
-      const docEntry = data?.DocEntry;
-      if (!docEntry) throw new Error("No hay DocEntry del borrador.");
+  try {
+    setSending(true);
+    setMsg(null);
 
-      if (clase === "ARTICULO") {
-        for (let i = 0; i < rows.length; i++) {
-          const it = String(rows[i]?.ItemCode || "").trim();
-          if (!it) throw new Error(`Línea ${i + 1}: falta ItemCode (Código artículo)`);
-          const qty = Number(rows[i]?.Cantidad ?? 0);
-          if (!qty || qty <= 0) throw new Error(`Línea ${i + 1}: Cantidad debe ser mayor a 0`);
-        }
-      }
+    const idOC = Number(data?.IdOC || data?.idOC || 0);
+    const docEntry = Number(data?.DocEntry || 0);
 
-      if (requiereDimensiones) {
-        for (let i = 0; i < rows.length; i++) {
-          const ln = rows[i];
-          const linea = String(ln?.CostingCode || "").trim();
-          const region = String(ln?.CostingCode2 || "").trim();
-          const depto = String(ln?.CostingCode3 || "").trim();
+    if (!idOC || !docEntry) {
+      throw new Error("No se encontró IdOC o DocEntry del borrador.");
+    }
 
-          if (!linea) throw new Error(`Línea ${i + 1}: falta Línea`);
-          if (!region) throw new Error(`Línea ${i + 1}: falta Región`);
-          if (!depto) throw new Error(`Línea ${i + 1}: falta Departamento`);
-        }
-      }
+    const rowsActuales = (rows || []).map((r) => ({
+      ...r,
+      Cantidad: n2(r.Cantidad ?? r.Quantity ?? 1),
+      Precio: n2(r.Precio ?? r.UnitPrice ?? 0),
+      Descuento: n2(r.Descuento ?? r.DiscountPercent ?? 0),
+      TaxCode: String(r.TaxCode || "IVA_15"),
+      Cuenta: String(r.Cuenta || r.AccountCode || "").trim(),
+      ItemCode: String(r.ItemCode || "").trim(),
+      Descripcion: String(r.Descripcion || r.ItemDescription || "").trim(),
+      DatoAdicional: String(r.DatoAdicional || "").trim(),
+      CostingCode: String(r.CostingCode || "").trim(),
+      CostingCode2: String(r.CostingCode2 || "").trim(),
+      CostingCode3: String(r.CostingCode3 || "").trim(),
+      IdSustentoTributario: String(r.IdSustentoTributario || "").trim(),
+      ConceptoGasto: String(r.ConceptoGasto || "").trim(),
+      LineNum: r.LineNum ?? null,
+    }));
 
-      const payload = {
-        Cabecera: {
-          CardCode: cabecera.CardCode,
-          CardName: cabecera.CardName,
-          Comments: cabecera.Comments,
-          DocDate: cabecera.DocDate,
-          DocDueDate: cabecera.DocDueDate,
-          Serie: cabecera.Serie,
-          PtoEmi: cabecera.PtoEmi,
-          Secuencial: cabecera.Secuencial,
-          NumAtCard: cabecera.NumAtCard,
-          TipoDoc: cabecera.TipoDoc,
-          TipoEmision: cabecera.TipoEmision,
-          NroAutorizacion: cabecera.NroAutorizacion,
-          FechaAutorizacion: cabecera.FechaAutorizacion,
-          FormaPago: cabecera.FormaPago,
-          TipoPago: cabecera.TipoPago,
-          IdSustentoTributario: cabecera.IdSustentoTributario,
-        },
-        Lineas: rows.map((r) => {
-          const qty = Math.max(1, Number(r.Cantidad ?? 1) || 1);
+    if (!rowsActuales.length) {
+      throw new Error("Debes tener al menos una línea.");
+    }
 
-          const baseLn = {
-            Descripcion: String(r.Descripcion || ""),
-            Quantity: qty,
-            Cantidad: qty,
-            Precio: Number(r.Precio ?? 0) || 0,
-            UnitPrice: Number(r.Precio ?? 0) || 0,
-            DatoAdicional: String(r.DatoAdicional || ""),
-            Descuento: Number(r.Descuento ?? 0) || 0,
-            DiscountPercent: Number(r.Descuento ?? 0) || 0,
-            TaxCode: (Number(r.Precio ?? 0) || 0) === 0 ? "IVA_0" : (r.TaxCode || "IVA_15"),
-            CostingCode: String(r.CostingCode || ""),
-            CostingCode2: String(r.CostingCode2 || ""),
-            CostingCode3: String(r.CostingCode3 || ""),
-            IdSustentoTributario: String(r.IdSustentoTributario || ""),
-          };
+    const subtotalBase = rowsActuales.reduce(
+      (acc, r) => acc + Math.max(0, n2(r.Cantidad) * n2(r.Precio)),
+      0
+    );
 
-          if (clase === "SERVICIO") {
-            baseLn.ConceptoGasto = String(r.ConceptoGasto || "");
-          }
+    const totalDiscountNow = Math.max(0, n2(descuentoTotalFactura));
+    if (totalDiscountNow > subtotalBase) {
+      throw new Error(
+        `El descuento no puede ser mayor al subtotal ($${subtotalBase.toFixed(2)}).`
+      );
+    }
 
-          if (clase === "ARTICULO") {
-            return {
-              ...baseLn,
-              ItemCode: String(r.ItemCode || "").trim(),
-              Cuenta: ""
-            };
-          }
+    const discountPercentNow =
+      subtotalBase > 0 ? (totalDiscountNow / subtotalBase) * 100 : 0;
 
+    const commentsNow = construirComentarioConDescuento(
+      cabecera.Comments,
+      totalDiscountNow,
+      clase
+    );
+
+    const hayDescuentoCabecera = totalDiscountNow > 0 || discountPercentNow > 0;
+
+    const payload = {
+      Cabecera: {
+        CardCode: String(cabecera.CardCode || "").trim(),
+        CardName: String(cabecera.CardName || "").trim(),
+        Comments: commentsNow,
+        DocDate: cabecera.DocDate || "",
+        DocDueDate: cabecera.DocDueDate || "",
+        Serie: String(cabecera.Serie || "").trim(),
+        PtoEmi: String(cabecera.PtoEmi || "").trim(),
+        Secuencial: String(cabecera.Secuencial || "").trim(),
+        NumAtCard: String(cabecera.NumAtCard || "").trim(),
+        TipoDoc: String(cabecera.TipoDoc || "01").trim(),
+        TipoEmision: String(cabecera.TipoEmision || "E").trim(),
+        NroAutorizacion: String(cabecera.NroAutorizacion || "").trim(),
+        FechaAutorizacion: cabecera.FechaAutorizacion || "",
+        FormaPago: String(cabecera.FormaPago || "20").trim(),
+        TipoPago: String(cabecera.TipoPago || "01").trim(),
+        IdSustentoTributario: String(cabecera.IdSustentoTributario || "01").trim(),
+        DiscountPercent: +discountPercentNow.toFixed(6),
+        TotalDiscount: +totalDiscountNow.toFixed(2),
+      },
+      Lineas: rowsActuales.map((r, idx) => {
+        const qty = Math.max(1, n2(r.Cantidad));
+        const precio = n2(r.Precio);
+        const descuentoLinea = hayDescuentoCabecera ? 0 : n2(r.Descuento);
+
+        const baseLn = {
+          LineNum: r.LineNum ?? idx,
+          Descripcion: r.Descripcion || (clase === "ARTICULO" ? r.ItemCode : "SERVICIO"),
+          ItemDescription: r.Descripcion || (clase === "ARTICULO" ? r.ItemCode : "SERVICIO"),
+          Quantity: qty,
+          Cantidad: qty,
+          Precio: precio,
+          UnitPrice: precio,
+          DatoAdicional: r.DatoAdicional,
+          Descuento: descuentoLinea,
+          DiscountPercent: descuentoLinea,
+          TaxCode: r.TaxCode || (precio === 0 ? "IVA_0" : "IVA_15"),
+          CostingCode: r.CostingCode,
+          CostingCode2: r.CostingCode2,
+          CostingCode3: r.CostingCode3,
+          IdSustentoTributario:
+            r.IdSustentoTributario ||
+            String(cabecera.IdSustentoTributario || "01").trim(),
+          ConceptoGasto: r.ConceptoGasto,
+        };
+
+        if (clase === "SERVICIO") {
           return {
             ...baseLn,
-            Cuenta: String(r.Cuenta || "").trim(),
-            ItemCode: ""
+            Cuenta: r.Cuenta,
+            AccountCode: r.Cuenta,
+            ItemCode: "",
           };
-        }),
-      };
-
-      const res = await fetch(
-        `${baseUrl}/api/oc/${data?.OcId || 0}/prefactura/preview/${docEntry}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
         }
-      );
-      const j = await res.json();
-      if (!res.ok) throw new Error(j?.error || "No se pudo actualizar el borrador en SAP");
 
-      if (modo === "facturas_sap") {
-        setMsg({ type: "ok", text: "Gasto guardado. Este borrador queda en solo lectura." });
-        setFinalizado(true);
-        onUse?.({ locked: true, docEntry });
-        return;
-      }
+        return {
+          ...baseLn,
+          Cuenta: "",
+          AccountCode: "",
+          ItemCode: "",
+          ConceptoGasto: "",
+        };
+      }),
+    };
 
-      setMsg({ type: "ok", text: "Borrador actualizado en SAP." });
-      onUse?.({ clase, draftUpdated: true, docEntry });
+    console.log("===== GUARDAR BORRADOR =====");
+    console.log("idOC =", idOC);
+    console.log("docEntry =", docEntry);
+    console.log("rowsActuales =", JSON.parse(JSON.stringify(rowsActuales)));
+    console.log("descuentoTotalFactura =", descuentoTotalFactura);
+    console.log("subtotalBase =", subtotalBase);
+    console.log("discountPercentNow =", discountPercentNow);
+    console.log("totalDiscountNow =", totalDiscountNow);
+    console.log("payload =", JSON.parse(JSON.stringify(payload)));
 
-    } catch (e) {
-      setMsg({ type: "err", text: String(e?.message || e) });
-    } finally {
-      setSending(false);
-    }
+    const sapResp = await updateFacturaSapDraft(idOC, docEntry, payload);
+    console.log("RESPUESTA UPDATE SAP =", sapResp);
+
+    const snapshotResp = await persistFacturaSnapshotOC(idOC, docEntry, payload);
+    console.log("RESPUESTA SNAPSHOT =", snapshotResp);
+
+    setCabecera((prev) => ({
+      ...prev,
+      Comments: commentsNow,
+      DiscountPercent: +discountPercentNow.toFixed(6),
+      TotalDiscount: +totalDiscountNow.toFixed(2),
+    }));
+
+    setRows((prev) =>
+      prev.map((r, idx) => ({
+        ...r,
+        Descuento: hayDescuentoCabecera ? 0 : n2(r.Descuento),
+        LineNum: r.LineNum ?? idx,
+      }))
+    );
+    setBorradorGuardadoOk(true);
+alert("✅ Borrador actualizado correctamente en SAP");
+
+// 👇 CERRAR AUTOMÁTICO
+setTimeout(() => {
+  if (typeof onClose === "function") {
+    onClose();
   }
+}, 800); // pequeño delay para que se vea el mensaje
+  } catch (e) {
+    console.error("ERROR guardarBorrador:", e);
+    setMsg({
+      type: "err",
+      text: e?.message || "No se pudo guardar el borrador.",
+    });
+  } finally {
+    setSending(false);
+  }
+}
+async function handleCerrar() {
+  try {
+    if (!borradorGuardadoOk) {
+      if (typeof onClose === "function") {
+        onClose();
+      }
+      return;
+    }
+
+    const confirmado = window.confirm(
+      "¿Estás segura de que ya actualizaste todo en la factura? Si aceptas, la OC cambiará a PROCESADA."
+    );
+
+    if (!confirmado) {
+      return;
+    }
+
+    const idOC = Number(data?.IdOC || data?.idOC || 0);
+    if (!idOC) {
+      throw new Error("No se encontró la OC.");
+    }
+
+    const comentario = String(cabecera?.Comments || "").trim();
+
+    await updateOCState(idOC, {
+      estado: "PROCESADA",
+      comentario,
+    });
+
+    setMsg({
+      type: "ok",
+      text: "OC marcada como PROCESADA.",
+    });
+
+    if (typeof onClose === "function") {
+      onClose();
+    }
+  } catch (e) {
+    console.error("ERROR handleCerrar:", e);
+    setMsg({
+      type: "err",
+      text: e?.message || "No se pudo actualizar el estado al cerrar.",
+    });
+  }
+}
 
   if (!open || !data) return null;
 
@@ -646,7 +958,7 @@ useEffect(() => {
             <button
               type="button"
               className={styles.closeX}
-              onClick={onClose}
+              onClick={handleCerrar}
               aria-label="Cerrar"
             >
               ×
@@ -666,6 +978,44 @@ useEffect(() => {
                 <option value="ARTICULO">ARTÍCULO</option>
                 <option value="SERVICIO">SERVICIO</option>
               </select>
+            </label>
+
+            <label className={styles.inlineField}>
+              <span>Descuento total factura</span>
+
+              <div className={styles.discountBox}>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={descuentoTotalFactura}
+                  onChange={(e) => setDescuentoTotalFactura(e.target.value)}
+                  disabled={readOnlyTotal || isLock}
+                  className={styles.discountInput}
+                  placeholder="0.00"
+                  title="Ingrese el descuento total de la factura"
+                />
+
+                <button
+                  type="button"
+                  className={styles.discountApplyBtn}
+                  onClick={() => aplicarDescuentoTotalFactura(descuentoTotalFactura)}
+                  disabled={readOnlyTotal || isLock}
+                  title="Aplicar descuento total en cabecera"
+                >
+                  Aplicar
+                </button>
+              </div>
+
+              {descuentoDistribuidoInfo && (
+                <small className={styles.discountHelp}>
+                  Se aplicó ${descuentoDistribuidoInfo.descuentoAplicado.toFixed(2)} en cabecera sobre {descuentoDistribuidoInfo.lineasAfectadas} línea{descuentoDistribuidoInfo.lineasAfectadas === 1 ? "" : "s"}.
+                </small>
+              )}
+
+              <small className={styles.discountSubnote}>
+                Máximo permitido según subtotal actual: ${subtotalBrutoActual.toFixed(2)}
+              </small>
             </label>
 
             <div className={styles.helperNote}>
@@ -799,7 +1149,7 @@ useEffect(() => {
                 <div className={`${styles.theadRow} ${rowTypeClass}`}>
                   <div className={`${styles.idx} ${styles.stickyHead}`}>#</div>
 
-                  {clase === 'ARTICULO' ? (
+                  {false ? (
                     <>
                       <div>Código artículo</div>
                       <div>Descripción</div>
@@ -847,7 +1197,7 @@ useEffect(() => {
                     <div className={`${styles.trow} ${rowTypeClass}`} key={i}>
                       <div className={`${styles.idx} ${styles.sticky}`}>{i + 1}</div>
 
-                      {clase === 'ARTICULO' ? (
+                      {tipoVisual === 'ARTICULO' ? (
                         <>
                           <div>
                             <input
@@ -925,12 +1275,16 @@ useEffect(() => {
                       <div>
                         <input
                           type="number"
-                          step="0.01"
+                          step="0.000001"
                           className={styles.numInp}
                           value={ln.Descuento}
                           onChange={e => updateRow(i, { Descuento: e.target.value })}
-                          disabled={isLock || readOnlyTotal}
-                          title={t(ln.Descuento)}
+                          disabled={isLock || readOnlyTotal || Number(cabecera.TotalDiscount || 0) > 0}
+                          title={
+                            Number(cabecera.TotalDiscount || 0) > 0
+                              ? 'Con descuento total en cabecera, el descuento por línea queda en 0'
+                              : t(ln.Descuento)
+                          }
                         />
                       </div>
 
@@ -952,37 +1306,38 @@ useEffect(() => {
                       </div>
 
                       <div className={styles.datoAdicionalCell}>
-  <input
-    type="text"
-    value={ln.DatoAdicional || ""}
-    onChange={(e) => updateRow(i, { DatoAdicional: e.target.value })}
-    disabled={readOnlyTotal || (isLock && !(isAdmin || isData))}
-    placeholder="Escribe un dato adicional"
-    title={t(ln.DatoAdicional)}
-  />
+                        <input
+                          type="text"
+                          value={ln.DatoAdicional || ""}
+                          onChange={(e) => updateRow(i, { DatoAdicional: e.target.value })}
+                          disabled={readOnlyTotal || (isLock && !(isAdmin || isData))}
+                          placeholder="Escribe un dato adicional"
+                          title={t(ln.DatoAdicional)}
+                        />
 
-  <div className={styles.copyActions}>
-    <button
-      type="button"
-      className={styles.copyMiniBtn}
-      onClick={() => copiarDatoAdicional(i, 'vacias')}
-      disabled={!String(ln.DatoAdicional || '').trim() || readOnlyTotal}
-      title="Copiar a filas vacías"
-    >
-      Copiar
-    </button>
+                        <div className={styles.copyActions}>
+                          <button
+                            type="button"
+                            className={styles.copyMiniBtn}
+                            onClick={() => copiarDatoAdicional(i, 'vacias')}
+                            disabled={!String(ln.DatoAdicional || '').trim() || readOnlyTotal}
+                            title="Copiar a filas vacías"
+                          >
+                            Copiar
+                          </button>
 
-    <button
-      type="button"
-      className={styles.copyMiniBtnAlt}
-      onClick={() => copiarDatoAdicional(i, 'todas')}
-      disabled={!String(ln.DatoAdicional || '').trim() || readOnlyTotal}
-      title="Reemplazar en todas las filas"
-    >
-      Todas
-    </button>
-  </div>
-</div>
+                          <button
+                            type="button"
+                            className={styles.copyMiniBtnAlt}
+                            onClick={() => copiarDatoAdicional(i, 'todas')}
+                            disabled={!String(ln.DatoAdicional || '').trim() || readOnlyTotal}
+                            title="Reemplazar en todas las filas"
+                          >
+                            Todas
+                          </button>
+                        </div>
+                      </div>
+
                       <div>
                         <SearchSelect
                           value={ln.CostingCode}
@@ -1065,20 +1420,20 @@ useEffect(() => {
                       </div>
 
                       <div>
-  <SearchSelect
-    value={ln.ConceptoGasto}
-    onChange={(v) => handleSelectGasto(i, v)}
-    options={gastoOpts}
-    placeholder={gastos.length ? "Seleccione concepto de gasto" : "Cargando..."}
-    disabled={!gastos.length || readOnlyTotal || (!isLock && !canEditGasto)}
-    title={gastoTitle}
-    maxHeight={320}
-    searchPlaceholder="Buscar gasto..."
-    mode="dialog"
-    dialogTitle="Seleccionar gasto"
-    inputClassName={styles.ssInput}
-  />
-</div>
+                        <SearchSelect
+                          value={ln.ConceptoGasto}
+                          onChange={(v) => handleSelectGasto(i, v)}
+                          options={gastoOpts}
+                          placeholder={gastos.length ? "Seleccione concepto de gasto" : "Cargando..."}
+                          disabled={!gastos.length || readOnlyTotal || (!isLock && !canEditGasto)}
+                          title={gastoTitle}
+                          maxHeight={320}
+                          searchPlaceholder="Buscar gasto..."
+                          mode="dialog"
+                          dialogTitle="Seleccionar gasto"
+                          inputClassName={styles.ssInput}
+                        />
+                      </div>
 
                       <div className={styles.num} title={total.toFixed(2)}>
                         {total.toFixed(2)}
@@ -1107,11 +1462,11 @@ useEffect(() => {
                       className={styles.secondary}
                       onClick={addRow}
                       disabled={isLock || readOnlyTotal}
-                      title={clase === 'ARTICULO'
+                      title={tipoVisual === 'ARTICULO'
                         ? 'Agregar una nueva línea de artículo'
                         : 'Agregar una nueva línea de servicio'}
                     >
-                      {clase === 'ARTICULO'
+                      {tipoVisual === 'ARTICULO'
                         ? '+ Agregar línea de artículo'
                         : '+ Agregar línea de servicio'}
                     </button>
@@ -1153,7 +1508,7 @@ useEffect(() => {
           <div className={styles.actions}>
             <button
               className={styles.secondary}
-              onClick={onClose}
+              onClick={handleCerrar}
               disabled={sending}
               title="Cerrar"
             >

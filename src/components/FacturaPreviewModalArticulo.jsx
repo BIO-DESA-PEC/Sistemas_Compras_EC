@@ -355,7 +355,7 @@ export default function FacturaPreviewModalArticulo({
       };
 
       const res = await fetch(`${baseUrl}/api/oc/${data?.OcId || 0}/prefactura/preview/${docEntry}`, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });

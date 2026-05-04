@@ -386,15 +386,15 @@ export default function SolicitudesMensualesClient({ session }) {
           <td>
   <div className={styles.imageBox}>
     {item.ImagenReferencia ? (
-      <img
-        src={
-          item.ImagenReferencia?.startsWith("http")
-            ? item.ImagenReferencia
-            : `${API_BASE}${item.ImagenReferencia}`
-        }
-        alt={item.Descripcion || "Imagen referencia"}
-        className={styles.refImage}
-      />
+    <img
+  src={`${API_BASE}/api/solicitudes-mensuales/imagenes/${encodeURIComponent(item.ImagenReferencia)}`}
+  alt={item.Descripcion || "Imagen referencia"}
+  className={styles.refImage}
+  onError={(e) => {
+    console.log("No cargó imagen:", item.IdDetallePlantilla, item.ImagenReferencia);
+    e.currentTarget.style.display = "none";
+  }}
+/>
     ) : (
       <div className={styles.imagePlaceholder}>Sin imagen</div>
     )}
