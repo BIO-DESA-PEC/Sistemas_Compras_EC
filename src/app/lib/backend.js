@@ -548,3 +548,20 @@ export async function updateFacturaSapDraft(idOC, docEntry, payload) {
     body: JSON.stringify(payload),
   });
 }
+export async function createOCDirecta(payload) {
+  const base = process.env.NEXT_PUBLIC_BACKEND_URL || "https://back-compras-ec.onrender.com";
+
+  const res = await fetch(`${base}/api/oc-directa`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new Error(data?.error || "No se pudo crear la OC directa.");
+  }
+
+  return data;
+}

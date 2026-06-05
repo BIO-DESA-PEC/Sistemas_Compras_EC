@@ -195,3 +195,24 @@
   visibility: hidden;            /* ocupa espacio, no se ve */
 }
 
+.headerTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.newBtn {
+  background: #2563eb;
+  color: white;
+  text-decoration: none;
+  padding: 10px 16px;
+  border-radius: 12px;
+  font-weight: 700;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.22);
+}
+
+.newBtn:hover {
+  background: #1d4ed8;
+}

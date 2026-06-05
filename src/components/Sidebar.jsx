@@ -14,6 +14,7 @@ import {
   Truck,
   CalendarRange,
   Settings2,
+  CreditCard
 } from "lucide-react";
 import styles from "./sidebar.module.css";
 
@@ -132,6 +133,16 @@ export default function Sidebar({ session, user, collapsed }) {
     <Settings2 size={18} />
     <span>Plantillas mensuales</span>
   </a>
+)}
+{(isAdmin || isCompras) && (
+  <>
+    <div className={styles.sectionLabel}>Finanzas</div>
+
+    <a href="/tarjetas-credito" className={styles.item}>
+      <CreditCard size={18} />
+      <span>Tarjetas de crédito</span>
+    </a>
+  </>
 )}
 {(isAdmin || isCompras) && (
   <a href="/reportes" className={styles.item}>

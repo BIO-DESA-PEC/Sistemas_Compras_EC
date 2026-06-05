@@ -18,7 +18,8 @@ import {
   saveFacturaInfoOC,
   persistFacturaSnapshotOC,
   getProveedorSapByCardCode,
-  validarFacturaDuplicadaOC
+  validarFacturaDuplicadaOC,
+  createOCDirecta
 } from "@/app/lib/backend";
 import { useSession } from "next-auth/react";
 import ProveedorInfoModal from "@/components/ProveedorInfoModal";
@@ -90,11 +91,11 @@ function makeSummaryRow({ proveedor, total, ivaPct, fecha }) {
   };
 }
 
-export default function OCEditor({ oc, detalleInicial }) {
+export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
   const router = useRouter();
 
   const ocId = oc?.IdOC ?? oc?.IdOc ?? oc?.idOc ?? null;
-
+  const esOCDirecta = modoDirecto === true || String(oc?.Comentario || "").toUpperCase().includes("OC DIRECTA");
   const tipoOC = useMemo(() => (oc?.Tipo || "").trim().toUpperCase(), [oc?.Tipo]);
   const isServicio = tipoOC === "SERVICIO";
   const isArticulo = tipoOC === "ARTICULO";
@@ -410,42 +411,76 @@ export default function OCEditor({ oc, detalleInicial }) {
   }, [editable, provTotalMonto, provTotalTarget]);
 
   const saveDetail = useCallback(async ({ autoApprove = false, tipoAprobacion = "JEFE" } = {}) => {
+  try {
+    if (esOCDirecta) {
+  const usuarioId = user?.Id || user?.id || user?.IdUsuario || null;
+  const correoUsuario = session?.user?.email || "";
+
+  if (!usuarioId && !correoUsuario) {
+    throw new Error("No se pudo identificar el usuario logueado.");
+  }
+
+  const resp = await createOCDirecta({
+    IdUsuario: usuarioId,
+    CorreoUsuario: correoUsuario,
+    DepartamentoId: user?.DepartamentoId || null,
+    Tipo: oc?.Tipo || "SERVICIO",
+    FormaPago: oc?.FormaPago || "20",
+    DiasPago: diasPago || 0,
+    Comentario: "OC DIRECTA",
+    detalle,
+  });
+
+  alert("OC directa creada correctamente.");
+  router.push(`/ordenes/${resp.IdOC}`);
+  return;
+}
+
     await replaceOCDetail(oc.IdOC, detalle);
 
-    try {
-      const autoApproveFinal = esMensual ? true : autoApprove;
+    const autoApproveFinal = esMensual ? true : autoApprove;
 
-      const payload = autoApproveFinal
-        ? { autoApprove: true }
-        : { autoApprove: false, tipoAprobacion };
+    const payload = autoApproveFinal
+      ? { autoApprove: true }
+      : { autoApprove: false, tipoAprobacion };
 
-      const r = await requestOCApproval(oc.IdOC, payload);
+    const r = await requestOCApproval(oc.IdOC, payload);
 
-      await refreshApprovalStatus();
+    await refreshApprovalStatus();
 
-      if (r?.estado === "APROBADA") {
-        alert(
-          autoApproveFinal
-            ? "Detalle guardado. La OC quedó lista para facturar."
-            : "Detalle guardado y OC aprobada."
-        );
-      } else if (r?.estado === "PENDIENTE") {
-        alert(
-          tipoAprobacion === "CEO"
-            ? "Detalle guardado. Enviado a aprobación de CEO."
-            : "Detalle guardado. Enviado a aprobación del Jefe."
-        );
-      } else if (r?.estado === "RECHAZADA") {
-        alert("Detalle guardado. (Estado: RECHAZADA)");
-      } else {
-        alert("Detalle guardado.");
-      }
-    } catch (e) {
-      console.error(e);
-      alert("Detalle guardado, pero al solicitar aprobación hubo un error: " + (e?.message || e));
+    if (r?.estado === "APROBADA") {
+      alert(
+        autoApproveFinal
+          ? "Detalle guardado. La OC quedó lista para facturar."
+          : "Detalle guardado y OC aprobada."
+      );
+    } else if (r?.estado === "PENDIENTE") {
+      alert(
+        tipoAprobacion === "CEO"
+          ? "Detalle guardado. Enviado a aprobación de CEO."
+          : "Detalle guardado. Enviado a aprobación del Jefe."
+      );
+    } else {
+      alert("Detalle guardado.");
     }
-  }, [detalle, oc.IdOC, refreshApprovalStatus, esMensual]);
 
+  } catch (e) {
+    console.error(e);
+    alert("Error guardando detalle: " + (e?.message || e));
+  }
+}, [
+  detalle,
+  oc.IdOC,
+  oc?.Tipo,
+  oc?.FormaPago,
+  diasPago,
+  refreshApprovalStatus,
+  esMensual,
+  esOCDirecta,
+  user?.Id,
+  user?.DepartamentoId,
+  router
+]);
   const getProveedorPrincipal = useCallback(() => {
     const fila = (detalle || []).find((x) => (x?.Proveedor || "").trim());
     return {
@@ -760,12 +795,17 @@ const puedeFacturar =
             </div>
 
             <div className={styles.topChips}>
-              <span className={`${styles.chip} ${styles.chipMuted}`}>
-                {estadoUI === "EN_APROBACION"
-                  ? "En aprobación"
-                  : estadoUI.replace("_", " ")}
-              </span>
+  {esOCDirecta && (
+    <span className={`${styles.chip} ${styles.chipWarn}`}>
+      OC DIRECTA
+    </span>
+  )}
 
+  <span className={`${styles.chip} ${styles.chipMuted}`}>
+    {estadoUI === "EN_APROBACION"
+      ? "En aprobación"
+      : estadoUI.replace("_", " ")}
+  </span>
               {ocAprob?.estado === "PENDIENTE" && (
                 <span className={`${styles.chip} ${styles.chipWarn}`}>
                   Nivel {ocAprob.nivel_actual}/{ocAprob.nivel_max}
@@ -818,14 +858,17 @@ const puedeFacturar =
           Enviar a CEO
         </button>
 
-        <button
-          className={styles.secondary}
-          onClick={() => saveDetail({ autoApprove: true })}
-          title="Sin aprobación, queda lista para facturar"
-        >
-          Guardar detalle (sin aprobación)
-        </button>
-      </>
+<button
+  className={styles.secondary}
+  onClick={() => saveDetail({ autoApprove: true })}
+  title={
+    esOCDirecta
+      ? "OC directa: crea solicitud, preorden y OC"
+      : "Sin aprobación, queda lista para facturar"
+  }
+>
+  {esOCDirecta ? "Guardar OC directa" : "Guardar detalle (sin aprobación)"}
+</button>      </>
     )}
   </>
 ) : (

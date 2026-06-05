@@ -765,6 +765,7 @@ export default function FacturaPreviewModal({
     );
 
     const totalDiscountNow = Math.max(0, n2(descuentoTotalFactura));
+
     if (totalDiscountNow > subtotalBase) {
       throw new Error(
         `El descuento no puede ser mayor al subtotal ($${subtotalBase.toFixed(2)}).`
@@ -851,11 +852,6 @@ export default function FacturaPreviewModal({
     console.log("===== GUARDAR BORRADOR =====");
     console.log("idOC =", idOC);
     console.log("docEntry =", docEntry);
-    console.log("rowsActuales =", JSON.parse(JSON.stringify(rowsActuales)));
-    console.log("descuentoTotalFactura =", descuentoTotalFactura);
-    console.log("subtotalBase =", subtotalBase);
-    console.log("discountPercentNow =", discountPercentNow);
-    console.log("totalDiscountNow =", totalDiscountNow);
     console.log("payload =", JSON.parse(JSON.stringify(payload)));
 
     const sapResp = await updateFacturaSapDraft(idOC, docEntry, payload);
@@ -863,6 +859,12 @@ export default function FacturaPreviewModal({
 
     const snapshotResp = await persistFacturaSnapshotOC(idOC, docEntry, payload);
     console.log("RESPUESTA SNAPSHOT =", snapshotResp);
+
+    const estadoResp = await updateOCState(idOC, {
+      estado: "PROCESADA",
+      comentario: commentsNow,
+    });
+    console.log("RESPUESTA UPDATE ESTADO OC =", estadoResp);
 
     setCabecera((prev) => ({
       ...prev,
@@ -878,15 +880,20 @@ export default function FacturaPreviewModal({
         LineNum: r.LineNum ?? idx,
       }))
     );
-    setBorradorGuardadoOk(true);
-alert("✅ Borrador actualizado correctamente en SAP");
 
-// 👇 CERRAR AUTOMÁTICO
-setTimeout(() => {
-  if (typeof onClose === "function") {
-    onClose();
-  }
-}, 800); // pequeño delay para que se vea el mensaje
+    setBorradorGuardadoOk(true);
+    setFinalizado(true);
+
+    alert("✅ Borrador actualizado correctamente en SAP y OC procesada");
+
+    setTimeout(() => {
+      if (typeof onClose === "function") {
+        onClose();
+      }
+
+      window.location.reload();
+    }, 800);
+
   } catch (e) {
     console.error("ERROR guardarBorrador:", e);
     setMsg({
@@ -925,6 +932,8 @@ async function handleCerrar() {
       estado: "PROCESADA",
       comentario,
     });
+    setBorradorGuardadoOk(true);
+alert("✅ Borrador actualizado correctamente en SAP y OC procesada");
 
     setMsg({
       type: "ok",

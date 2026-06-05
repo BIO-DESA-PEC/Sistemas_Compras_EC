@@ -81,9 +81,15 @@ export default async function OCListPage({ searchParams }) {
   return (
     <div className={styles.wrap}>
       <div className={styles.header}>
-        <h1 className={styles.title}>Órdenes de compra</h1>
+  <div className={styles.headerTop}>
+    <h1 className={styles.title}>Órdenes de compra</h1>
 
-        <div className={styles.filters}>
+    <Link href="/ordenes/nueva" className={styles.newBtn}>
+      + Nueva orden
+    </Link>
+  </div>
+
+  <div className={styles.filters}>
           {estadoOpts.map((est) => (
             <Link
               key={est}
