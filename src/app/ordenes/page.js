@@ -8,6 +8,8 @@ const PAGE_SIZE = 15;
 export default async function OCListPage({ searchParams }) {
   const estado = (searchParams?.estado ?? "Todos").toString();
   const q = (searchParams?.q ?? "").toString().trim();
+  const historico = searchParams?.historico === "Y" ? "Y" : "N";
+
   const pageParam = parseInt((searchParams?.page ?? "1").toString(), 10);
   const currentPage = Number.isNaN(pageParam) || pageParam < 1 ? 1 : pageParam;
 
@@ -15,7 +17,7 @@ export default async function OCListPage({ searchParams }) {
   let error = null;
 
   try {
-    const res = await getOCList({ estado, q });
+    const res = await getOCList({ estado, q, historico });
     if (Array.isArray(res)) items = res;
     else if (Array.isArray(res?.data)) items = res.data;
     else items = [];
@@ -39,19 +41,14 @@ export default async function OCListPage({ searchParams }) {
     "RECHAZADA",
   ];
 
-  const linkFor = (p) => {
+  const buildLink = ({ newEstado = estado, newHistorico = historico, page = 1 }) => {
     const qs = new URLSearchParams();
-    if (q) qs.set("q", q);
-    if (estado && estado !== "Todos") qs.set("estado", estado);
-    if (p > 1) qs.set("page", String(p));
-    const s = qs.toString();
-    return `/ordenes${s ? `?${s}` : ""}`;
-  };
 
-  const linkForEstado = (est) => {
-    const qs = new URLSearchParams();
     if (q) qs.set("q", q);
-    if (est && est !== "Todos") qs.set("estado", est);
+    if (newEstado && newEstado !== "Todos") qs.set("estado", newEstado);
+    if (newHistorico === "Y") qs.set("historico", "Y");
+    if (page > 1) qs.set("page", String(page));
+
     const s = qs.toString();
     return `/ordenes${s ? `?${s}` : ""}`;
   };
@@ -75,40 +72,74 @@ export default async function OCListPage({ searchParams }) {
       if (curr < max - 2) out.push({ label: "…" });
       add(max);
     }
+
     return out;
   };
 
   return (
     <div className={styles.wrap}>
       <div className={styles.header}>
-  <div className={styles.headerTop}>
-    <h1 className={styles.title}>Órdenes de compra</h1>
+        <div className={styles.headerTop}>
+          <div>
+            <h1 className={styles.title}>Órdenes de compra</h1>
+            <p className={styles.subtitle}>
+              {historico === "Y"
+                ? "Mostrando órdenes históricas anteriores al 10/06/2026."
+                : "Mostrando órdenes actuales desde el 10/06/2026."}
+            </p>
+          </div>
 
-    <Link href="/ordenes/nueva" className={styles.newBtn}>
-      + Nueva orden
-    </Link>
-  </div>
+          <Link href="/ordenes/nueva" className={styles.newBtn}>
+            + Nueva orden
+          </Link>
+        </div>
 
-  <div className={styles.filters}>
+        <div className={styles.filters}>
           {estadoOpts.map((est) => (
             <Link
               key={est}
-              href={linkForEstado(est)}
+              href={buildLink({ newEstado: est, page: 1 })}
               className={`${styles.chip} ${estado === est ? styles.active : ""}`}
             >
               {est}
             </Link>
           ))}
 
+          <div className={styles.segmented}>
+            <Link
+              href={buildLink({ newHistorico: "N", page: 1 })}
+              className={`${styles.segment} ${
+                historico !== "Y" ? styles.segmentActive : ""
+              }`}
+            >
+              Actuales
+            </Link>
+
+            <Link
+              href={buildLink({ newHistorico: "Y", page: 1 })}
+              className={`${styles.segment} ${
+                historico === "Y" ? styles.segmentActive : ""
+              }`}
+            >
+              Históricas
+            </Link>
+          </div>
+
           <form className={styles.search} action="/ordenes" method="get">
             {estado && estado !== "Todos" && (
               <input type="hidden" name="estado" value={estado} />
             )}
+
+            {historico === "Y" && (
+              <input type="hidden" name="historico" value="Y" />
+            )}
+
             <input
               name="q"
               placeholder="Buscar por #OC, #Solicitud o #PreOC"
               defaultValue={q}
             />
+
             <button type="submit">Filtrar</button>
           </form>
         </div>
@@ -135,19 +166,21 @@ export default async function OCListPage({ searchParams }) {
             paginated.map((r) => (
               <div key={r.IdOC} className={styles.row}>
                 <div className={styles.ocContainer}>
-                <Link className={styles.link} href={`/ordenes/${r.IdOC}`}>
-                  #{r.IdOC}
-                </Link>
+                  <Link className={styles.link} href={`/ordenes/${r.IdOC}`}>
+                    #{r.IdOC}
+                  </Link>
 
-                {r.EsAnticipo && (
-                  <span
-                    className={styles.anticipoTag}
-                    title={`Orden generada desde el anticipo ${r.CodigoAnticipo || ""}`}
-                  >
-                    ANTICIPO
-                  </span>
-                )}
-                            </div>
+                  {r.EsAnticipo && (
+                    <span
+                      className={styles.anticipoTag}
+                      title={`Orden generada desde el anticipo ${
+                        r.CodigoAnticipo || ""
+                      }`}
+                    >
+                      ANTICIPO
+                    </span>
+                  )}
+                </div>
 
                 <span className={styles.linkMuted}>
                   {r.IdSolicitud ? `#${r.IdSolicitud}` : "—"}
@@ -171,19 +204,26 @@ export default async function OCListPage({ searchParams }) {
                     return (
                       <>
                         <div
-                      className={`${styles.badge} ${badgeClass}`}
-                      title={
-                        visual === "ANULADA"
-                          ? `Motivo: ${r.ComentarioOC || "Sin motivo registrado"}`
-                          : ""
-                      }
-                    >
-                      {visual}
-                    </div>
+                          className={`${styles.badge} ${badgeClass}`}
+                          title={
+                            visual === "ANULADA"
+                              ? `Motivo: ${
+                                  r.ComentarioOC || "Sin motivo registrado"
+                                }`
+                              : ""
+                          }
+                        >
+                          {visual}
+                        </div>
+
                         {r.EnAprobacion ? (
                           <div className={styles.subnote}>
                             En aprobación —{" "}
-                            <b>{r.AprobadorPendiente || r.NivelPendiente || "pendiente"}</b>
+                            <b>
+                              {r.AprobadorPendiente ||
+                                r.NivelPendiente ||
+                                "pendiente"}
+                            </b>
                           </div>
                         ) : null}
                       </>
@@ -231,24 +271,7 @@ export default async function OCListPage({ searchParams }) {
                       aria-label={`Editar OC #${r.IdOC}`}
                       title="Editar OC"
                     >
-                      <svg
-                        className={styles.icon}
-                        width="18"
-                        height="18"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                      >
-                        <path
-                          d="M3 17.25V21h3.75l11.06-11.06-3.75-3.75L3 17.25z"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                          fill="currentColor"
-                        />
-                        <path
-                          d="M14.06 6.94l3.75 3.75 1.06-1.06a1.5 1.5 0 0 0 0-2.12l-1.63-1.63a1.5 1.5 0 0 0-2.12 0l-1.06 1.06z"
-                          fill="currentColor"
-                        />
-                      </svg>
+                      ✎
                     </Link>
                   ) : (
                     <Link
@@ -257,53 +280,19 @@ export default async function OCListPage({ searchParams }) {
                       aria-label={`Ver OC #${r.IdOC}`}
                       title="Ver OC"
                     >
-                      <svg
-                        className={styles.icon}
-                        width="18"
-                        height="18"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                      >
-                        <path
-                          d="M1.5 12S5.5 5.5 12 5.5 22.5 12 22.5 12 18.5 18.5 12 18.5 1.5 12 1.5 12Z"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                        />
-                        <circle
-                          cx="12"
-                          cy="12"
-                          r="3.25"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                        />
-                      </svg>
+                      👁
                     </Link>
                   )}
 
                   <a
-                    href={`https://back-compras-ec.onrender.com/api/oc/${r.IdOC}/pdf`}
+                    href={`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/oc/${r.IdOC}/pdf`}
                     target="_blank"
                     rel="noopener"
                     className={`${styles.iconBtn} ${styles.ghost}`}
                     aria-label={`Descargar PDF OC #${r.IdOC}`}
                     title="PDF"
                   >
-                    <svg
-                      className={styles.icon}
-                      width="18"
-                      height="18"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                    >
-                      <path
-                        d="M12 3v10m0 0l-4-4m4 4l4-4"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                      <path d="M4 17h16v3H4z" fill="currentColor" />
-                    </svg>
+                    PDF
                   </a>
                 </div>
               </div>
@@ -314,12 +303,16 @@ export default async function OCListPage({ searchParams }) {
         {total > 0 && (
           <div className={styles.pager}>
             <span className={styles.pagerInfo}>
-              Mostrando {start + 1}–{Math.min(total, start + paginated.length)} de {total}
+              Mostrando {start + 1}–
+              {Math.min(total, start + paginated.length)} de {total}
             </span>
+
             <div className={styles.pagerNav}>
               <Link
-                className={`${styles.pageBtn} ${safePage === 1 ? styles.disabled : ""}`}
-                href={safePage === 1 ? "#" : linkFor(safePage - 1)}
+                className={`${styles.pageBtn} ${
+                  safePage === 1 ? styles.disabled : ""
+                }`}
+                href={safePage === 1 ? "#" : buildLink({ page: safePage - 1 })}
                 aria-disabled={safePage === 1}
               >
                 «
@@ -329,8 +322,10 @@ export default async function OCListPage({ searchParams }) {
                 p.n ? (
                   <Link
                     key={i}
-                    href={linkFor(p.n)}
-                    className={`${styles.pageBtn} ${p.active ? styles.pageActive : ""}`}
+                    href={buildLink({ page: p.n })}
+                    className={`${styles.pageBtn} ${
+                      p.active ? styles.pageActive : ""
+                    }`}
                   >
                     {p.label}
                   </Link>
@@ -342,8 +337,12 @@ export default async function OCListPage({ searchParams }) {
               )}
 
               <Link
-                className={`${styles.pageBtn} ${safePage === totalPages ? styles.disabled : ""}`}
-                href={safePage === totalPages ? "#" : linkFor(safePage + 1)}
+                className={`${styles.pageBtn} ${
+                  safePage === totalPages ? styles.disabled : ""
+                }`}
+                href={
+                  safePage === totalPages ? "#" : buildLink({ page: safePage + 1 })
+                }
                 aria-disabled={safePage === totalPages}
               >
                 »

@@ -71,6 +71,7 @@ export default function PreOrdenesPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [estado, setEstado] = useState("");
+  const [historico, setHistorico] = useState("N");
   const [q, setQ] = useState("");
   const [qInput, setQInput] = useState("");
 
@@ -98,6 +99,7 @@ export default function PreOrdenesPage() {
         estado,
         q,
         userId,
+        historico,
       });
 
       setItems(data?.items || []);
@@ -118,7 +120,7 @@ export default function PreOrdenesPage() {
 
   useEffect(() => {
     cargar();
-  }, [page, pageSize, estado, q, userId]);
+  }, [page, pageSize, estado, q, userId, historico]);
 
   function onBuscar(e) {
     e.preventDefault();
@@ -249,22 +251,50 @@ const invalidas = seleccionadas.filter((x) => !canBeUnified(x));
             </select>
 
             <select
-              className={styles.select}
-              value={pageSize}
-              onChange={(e) => {
+            className={styles.select}
+            value={pageSize}
+            onChange={(e) => {
+              setPage(1);
+              setPageSize(Number(e.target.value));
+            }}
+          >
+            <option value={10}>10</option>
+            <option value={20}>20</option>
+            <option value={30}>30</option>
+            <option value={50}>50</option>
+          </select>
+
+          <div className={styles.segmented}>
+            <button
+              type="button"
+              className={`${styles.segment} ${
+                historico === "N" ? styles.segmentActive : ""
+              }`}
+              onClick={() => {
                 setPage(1);
-                setPageSize(Number(e.target.value));
+                setHistorico("N");
               }}
             >
-              <option value={10}>10</option>
-              <option value={20}>20</option>
-              <option value={30}>30</option>
-              <option value={50}>50</option>
-            </select>
-
-            <button className={styles.secondary} type="submit">
-              Buscar
+              Actuales
             </button>
+
+            <button
+              type="button"
+              className={`${styles.segment} ${
+                historico === "Y" ? styles.segmentActive : ""
+              }`}
+              onClick={() => {
+                setPage(1);
+                setHistorico("Y");
+              }}
+            >
+              Históricas
+            </button>
+          </div>
+
+          <button className={styles.secondary} type="submit">
+            Buscar
+          </button>
           </div>
 
           <div className={styles.right}>

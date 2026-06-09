@@ -265,3 +265,60 @@
   opacity: 1;
   visibility: visible;
 }
+
+.segmented {
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+}
+
+.segment {
+  padding: 8px 16px;
+  border-radius: 999px;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 800;
+  color: #64748b;
+}
+
+.segmentActive {
+  background: #0f172a;
+  color: #ffffff;
+  box-shadow: 0 12px 24px -18px rgba(15, 23, 42, 0.9);
+}
+
+@media (max-width: 900px) {
+  .header,
+  .headerTop,
+  .filters,
+  .pager {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .search {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .search input,
+  .search button {
+    width: 100%;
+  }
+
+  .segmented {
+    width: 100%;
+  }
+
+  .segment {
+    flex: 1;
+    text-align: center;
+  }
+
+  .newBtn {
+    text-align: center;
+  }
+}

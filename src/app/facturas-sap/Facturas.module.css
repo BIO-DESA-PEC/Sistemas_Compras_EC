@@ -208,3 +208,38 @@
   cursor: default;
   pointer-events: none;
 }
+
+.segmented {
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+}
+
+.segment {
+  border: none;
+  background: transparent;
+  padding: 8px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  color: #64748b;
+}
+
+.segmentActive {
+  background: #0f172a;
+  color: #ffffff;
+}
+
+@media (max-width: 900px) {
+  .segmented {
+    width: 100%;
+  }
+
+  .segment {
+    flex: 1;
+  }
+}

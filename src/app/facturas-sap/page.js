@@ -3,10 +3,13 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import styles from './Facturas.module.css';
-import { getFacturasSap, getFacturaSapByDraft, getUserByEmail } from '@/app/lib/backend';
+import {
+  getFacturasSap,
+  getFacturaSapByDraft,
+  getUserByEmail,
+} from '@/app/lib/backend';
 import { useSession } from "next-auth/react";
 
-// Cargamos el modal solo en cliente
 const FacturaPreviewModal = dynamic(
   () => import('@/components/FacturaPreviewModal'),
   { ssr: false }
@@ -19,57 +22,44 @@ export default function FacturasSAPPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [usuario, setUsuario] = useState(null);
-  // Estado para el modal
+
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewData, setPreviewData] = useState(null);
   const [loadingDraft, setLoadingDraft] = useState(false);
 
-  // Buscador
   const [search, setSearch] = useState('');
-
-  // filtro de gasto (all | sin | con)
   const [gastoFilter, setGastoFilter] = useState('all');
-
-  // Paginado
+  const [historico, setHistorico] = useState('N');
   const [page, setPage] = useState(1);
 
   const { data: session } = useSession();
   const [lockSoloGasto, setLockSoloGasto] = useState(false);
 
-  // --------- cargar rol (Data) ----------
   useEffect(() => {
-  async function loadRole() {
-    try {
-      const email = session?.user?.email?.trim();
-      if (!email) return;
+    async function loadRole() {
+      try {
+        const email = session?.user?.email?.trim();
+        if (!email) return;
 
-      const u = await getUserByEmail(email);
-      console.log("USUARIO:", u);
-
-      setUsuario(u || null);
-
-      const rol = (u?.RolNombre || "").toString().trim().toLowerCase();
-
-      // solo si quieres mantener esta lógica especial
-      setLockSoloGasto(false); 
-      // o si de verdad DATA debe tener otro comportamiento:
-      // setLockSoloGasto(rol === "data");
-    } catch (e) {
-      console.error("getUserByEmail role:", e);
-      setUsuario(null);
-      setLockSoloGasto(false);
+        const u = await getUserByEmail(email);
+        setUsuario(u || null);
+        setLockSoloGasto(false);
+      } catch (e) {
+        console.error("getUserByEmail role:", e);
+        setUsuario(null);
+        setLockSoloGasto(false);
+      }
     }
-  }
 
-  loadRole();
-}, [session?.user?.email]);
+    loadRole();
+  }, [session?.user?.email]);
 
-  // --------- cargar lista ----------
   const loadFacturas = useCallback(async () => {
     setLoading(true);
     setError('');
+
     try {
-      const data = await getFacturasSap();
+      const data = await getFacturasSap({ historico });
       setFacturas(data || []);
       setPage(1);
     } catch (err) {
@@ -78,13 +68,12 @@ export default function FacturasSAPPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [historico]);
 
   useEffect(() => {
     loadFacturas();
   }, [loadFacturas]);
 
-  // --------- filtro por buscador ----------
   const filteredFacturas = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return facturas;
@@ -106,7 +95,6 @@ export default function FacturasSAPPage() {
     });
   }, [facturas, search]);
 
-  // ✅ filtro por gasto usando el campo que viene del backend: TieneGasto
   const filteredFacturasFinal = useMemo(() => {
     if (gastoFilter === 'all') return filteredFacturas;
 
@@ -120,7 +108,6 @@ export default function FacturasSAPPage() {
     });
   }, [filteredFacturas, gastoFilter]);
 
-  // --------- paginado ----------
   const totalRows = filteredFacturasFinal.length;
   const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
 
@@ -134,7 +121,6 @@ export default function FacturasSAPPage() {
     setPage(p);
   };
 
-  // --------- abrir modal ----------
   const handleOpenDraft = async (row) => {
     try {
       setLoadingDraft(true);
@@ -160,17 +146,23 @@ export default function FacturasSAPPage() {
   const handleUseDraft = () => {
     setPreviewOpen(false);
     setPreviewData(null);
-    loadFacturas(); // recarga lista
+    loadFacturas();
   };
 
-  // --------- render ----------
   if (loading) return <p className={styles.msg}>Cargando facturas...</p>;
   if (error) return <p className={styles.error}>{error}</p>;
 
   return (
     <main className={styles.container}>
       <div className={styles.headerRow}>
-        <h1 className={styles.title}>🧾 Facturas SAP (Borradores)</h1>
+        <div>
+          <h1 className={styles.title}>🧾 Facturas SAP (Borradores)</h1>
+          <p className={styles.subtitle}>
+            {historico === "Y"
+              ? "Mostrando facturas históricas anteriores al 10/06/2026."
+              : "Mostrando facturas actuales desde el 10/06/2026."}
+          </p>
+        </div>
 
         <div className={styles.toolbar}>
           <input
@@ -197,6 +189,34 @@ export default function FacturasSAPPage() {
             <option value="sin">Sin gasto</option>
             <option value="con">Con gasto</option>
           </select>
+
+          <div className={styles.segmented}>
+            <button
+              type="button"
+              className={`${styles.segment} ${
+                historico === "N" ? styles.segmentActive : ""
+              }`}
+              onClick={() => {
+                setHistorico("N");
+                setPage(1);
+              }}
+            >
+              Actuales
+            </button>
+
+            <button
+              type="button"
+              className={`${styles.segment} ${
+                historico === "Y" ? styles.segmentActive : ""
+              }`}
+              onClick={() => {
+                setHistorico("Y");
+                setPage(1);
+              }}
+            >
+              Históricas
+            </button>
+          </div>
 
           <button type="button" className={styles.btnSecondary} onClick={loadFacturas}>
             Actualizar
@@ -240,12 +260,17 @@ export default function FacturasSAPPage() {
                     <td>{f.Proveedor || '—'}</td>
                     <td>
                       {Number(f.TotalSAP != null ? f.TotalSAP : f.DocTotal || 0)
-                        .toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        .toLocaleString('es-EC', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
                     </td>
 
                     <td>
                       <span
-                        className={`${styles.gastoPill} ${hasGasto ? styles.gastoOk : styles.gastoPend}`}
+                        className={`${styles.gastoPill} ${
+                          hasGasto ? styles.gastoOk : styles.gastoPend
+                        }`}
                         title={hasGasto ? "Con gasto registrado" : "Sin gasto"}
                       >
                         {hasGasto ? "✅ Con gasto" : "⛔ Sin gasto"}
@@ -257,7 +282,11 @@ export default function FacturasSAPPage() {
                         className={styles.btn}
                         onClick={() => handleOpenDraft(f)}
                         disabled={loadingDraft}
-                        title={hasGasto ? "Este borrador ya tiene gasto registrado" : "Editar borrador"}
+                        title={
+                          hasGasto
+                            ? "Este borrador ya tiene gasto registrado"
+                            : "Editar borrador"
+                        }
                       >
                         {loadingDraft ? 'Cargando…' : label}
                       </button>
@@ -268,11 +297,12 @@ export default function FacturasSAPPage() {
             </tbody>
           </table>
 
-          {/* Paginación */}
           <div className={styles.pagination}>
             <div className={styles.pageButtons}>
               <button
-                className={`${styles.pageBtn} ${styles.arrowBtn} ${currentPage === 1 ? styles.pageBtnDisabled : ''}`}
+                className={`${styles.pageBtn} ${styles.arrowBtn} ${
+                  currentPage === 1 ? styles.pageBtnDisabled : ''
+                }`}
                 onClick={() => goToPage(currentPage - 1)}
                 disabled={currentPage === 1}
               >
@@ -284,7 +314,11 @@ export default function FacturasSAPPage() {
                 return (
                   <button
                     key={p}
-                    className={p === currentPage ? `${styles.pageBtn} ${styles.pageBtnActive}` : styles.pageBtn}
+                    className={
+                      p === currentPage
+                        ? `${styles.pageBtn} ${styles.pageBtnActive}`
+                        : styles.pageBtn
+                    }
                     onClick={() => goToPage(p)}
                   >
                     {p}
@@ -293,7 +327,9 @@ export default function FacturasSAPPage() {
               })}
 
               <button
-                className={`${styles.pageBtn} ${styles.arrowBtn} ${currentPage === totalPages ? styles.pageBtnDisabled : ''}`}
+                className={`${styles.pageBtn} ${styles.arrowBtn} ${
+                  currentPage === totalPages ? styles.pageBtnDisabled : ''
+                }`}
                 onClick={() => goToPage(currentPage + 1)}
                 disabled={currentPage === totalPages}
               >
@@ -304,20 +340,19 @@ export default function FacturasSAPPage() {
         </>
       )}
 
-      {/* Modal */}
       <FacturaPreviewModal
-  open={previewOpen}
-  data={previewData}
-  onClose={() => {
-    setPreviewOpen(false);
-    setPreviewData(null);
-  }}
-  onUse={handleUseDraft}
-  modo="facturas_sap"
-  rolNombre={usuario?.RolNombre || ""}
-  rolId={usuario?.RolId ?? null}
-  lockSoloGasto={lockSoloGasto}
-/>
+        open={previewOpen}
+        data={previewData}
+        onClose={() => {
+          setPreviewOpen(false);
+          setPreviewData(null);
+        }}
+        onUse={handleUseDraft}
+        modo="facturas_sap"
+        rolNombre={usuario?.RolNombre || ""}
+        rolId={usuario?.RolId ?? null}
+        lockSoloGasto={lockSoloGasto}
+      />
     </main>
   );
 }

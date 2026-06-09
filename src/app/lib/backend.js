@@ -89,8 +89,16 @@ export async function getOCList({
   pageSize = 20,
   estado = "",
   q = "",
+  historico = "N",
 } = {}) {
-  const url = apiUrl("/api/oc", { page, pageSize, estado, q });
+  const url = apiUrl("/api/oc", {
+    page,
+    pageSize,
+    estado,
+    q,
+    historico,
+  });
+
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) throw new Error(await safeText(res));
   return res.json();
@@ -283,11 +291,34 @@ export async function listPreOCs({
   pageSize = 20,
   estado = "",
   q = "",
-  userId = "",
-} = {}) {
-  const url = apiUrl("/api/preoc", { page, pageSize, estado, q, userId });
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(await safeText(res));
+  userId,
+  historico = "N",
+}) {
+  const base = process.env.NEXT_PUBLIC_BACKEND_URL;
+  const url = new URL(`${base}/api/preoc`);
+
+  url.searchParams.set("page", String(page));
+  url.searchParams.set("pageSize", String(pageSize));
+
+  if (estado) url.searchParams.set("estado", estado);
+  if (q) url.searchParams.set("q", q);
+  if (userId) url.searchParams.set("userId", userId);
+
+  // ✅ ESTO ES LO QUE TE FALTA
+  if (historico === "Y") {
+    url.searchParams.set("historico", "Y");
+  } else {
+    url.searchParams.set("historico", "N");
+  }
+
+  const res = await fetch(url.toString(), {
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+
   return res.json();
 }
 
@@ -392,8 +423,8 @@ export async function unifyPreOCs(idsPreOC = [], comentario = "") {
 /* ================================
  * Facturas SAP
  * ================================ */
-export async function getFacturasSap() {
-  const url = apiUrl("/api/facturas-sap");
+export async function getFacturasSap({ historico = "N" } = {}) {
+  const url = apiUrl("/api/facturas-sap", { historico });
   const res = await fetch(url, { cache: "no-store" });
 
   if (!res.ok) {
