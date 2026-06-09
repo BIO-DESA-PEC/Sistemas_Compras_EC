@@ -96,6 +96,10 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
 
   const ocId = oc?.IdOC ?? oc?.IdOc ?? oc?.idOc ?? null;
   const esOCDirecta = modoDirecto === true || String(oc?.Comentario || "").toUpperCase().includes("OC DIRECTA");
+  const esAnticipo =
+  String(oc?.Comentario || "").toUpperCase().includes("ANTICIPO") ||
+  String(oc?.TipoOrigen || "").toUpperCase().includes("ANTICIPO") ||
+  String(oc?.Origen || "").toUpperCase().includes("ANTICIPO");
   const tipoOC = useMemo(() => (oc?.Tipo || "").trim().toUpperCase(), [oc?.Tipo]);
   const isServicio = tipoOC === "SERVICIO";
   const isArticulo = tipoOC === "ARTICULO";
@@ -800,6 +804,17 @@ const puedeFacturar =
       OC DIRECTA
     </span>
   )}
+  {esAnticipo && (
+  <>
+    <span className={`${styles.chip} ${styles.chipWarn}`}>
+      ANTICIPO
+    </span>
+
+    <span className={`${styles.chip} ${styles.chipMuted}`}>
+      ESP
+    </span>
+  </>
+)}
 
   <span className={`${styles.chip} ${styles.chipMuted}`}>
     {estadoUI === "EN_APROBACION"

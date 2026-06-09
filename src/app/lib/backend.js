@@ -565,3 +565,26 @@ export async function createOCDirecta(payload) {
 
   return data;
 }
+
+export async function crearOCDesdeAnticipo(idAnticipo, userId) {
+  const base = process.env.NEXT_PUBLIC_BACKEND_URL;
+
+  const res = await fetch(`${base}/api/anticipos/${idAnticipo}/crear-oc`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    cache: "no-store",
+    body: JSON.stringify({
+      userId,
+    }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new Error(data.error || "No se pudo crear la OC desde el anticipo.");
+  }
+
+  return data;
+}

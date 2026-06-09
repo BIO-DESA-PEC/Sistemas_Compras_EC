@@ -124,6 +124,10 @@ export default function Sidebar({ session, user, collapsed }) {
               <ShoppingCart size={18} />
               <span>Nueva solicitud</span>
             </a>
+            <a href="/anticipos/new" className={styles.item}>
+            <FileText size={18} />
+            <span>Solicitud de anticipo</span>
+          </a>
             <a href="/solicitudes-mensuales" className={styles.item}>
   <CalendarRange size={18} />
   <span>Solicitudes mensuales</span>
@@ -133,6 +137,7 @@ export default function Sidebar({ session, user, collapsed }) {
     <Settings2 size={18} />
     <span>Plantillas mensuales</span>
   </a>
+  
 )}
 {(isAdmin || isCompras) && (
   <>
@@ -143,6 +148,12 @@ export default function Sidebar({ session, user, collapsed }) {
       <span>Tarjetas de crédito</span>
     </a>
   </>
+)}
+{canSeeAnticipos && (
+  <a href="/anticipos" className={styles.item}>
+    <FileText size={18} />
+    <span>Anticipos</span>
+  </a>
 )}
 {(isAdmin || isCompras) && (
   <a href="/reportes" className={styles.item}>
@@ -167,13 +178,7 @@ export default function Sidebar({ session, user, collapsed }) {
               </a>
             )}
 
-            {canSeeAnticipos && (
-              <a href="/anticipos" className={styles.item}>
-                <FileText size={18} />
-                <span>Anticipos</span>
-              </a>
-            )}
-
+            
             <a href="/ordenes" className={styles.item}>
               <FileText size={18} />
               <span>Órdenes de compra</span>

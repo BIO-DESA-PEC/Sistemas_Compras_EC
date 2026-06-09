@@ -3,7 +3,6 @@ import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { getUserByEmail } from "@/app/lib/backend";
 import styles from "./list.module.css";
-import AnticipoCheck from "./AnticipoCheck";
 
 const PAGE_SIZE = 15;
 
@@ -12,14 +11,17 @@ function isAdminCompras(user) {
   return r === "ADMINISTRADOR" || r === "COMPRAS";
 }
 
-async function fetchList({ userId, estado, scope }) {
+async function fetchList({ userId, estado, scope, historico }) {
   const base = process.env.NEXT_PUBLIC_BACKEND_URL;
   const u = new URL(`${base}/api/solicitudes`);
+
   u.searchParams.set("userId", userId);
   u.searchParams.set("scope", scope);
   u.searchParams.set("page", "1");
   u.searchParams.set("pageSize", "5000");
+
   if (estado) u.searchParams.set("estado", estado);
+  if (historico === "Y") u.searchParams.set("historico", "Y");
 
   const res = await fetch(u, { cache: "no-store" });
   if (!res.ok) throw new Error(await res.text());
@@ -46,38 +48,55 @@ export default async function SolicitudesListPage({ searchParams }) {
   const adminCompras = isAdminCompras(user);
 
   const estado = searchParams?.estado || "";
+  const historico = searchParams?.historico === "Y" ? "Y" : "N";
+
   const pageParam = parseInt(searchParams?.page || "1", 10);
   const currentPage = Number.isNaN(pageParam) || pageParam < 1 ? 1 : pageParam;
 
   const scope = adminCompras ? "all" : "mine";
 
-  const data = await fetchList({ userId: user.IdUsuario, estado, scope });
-  const items = data.items || [];
+  const data = await fetchList({
+    userId: user.IdUsuario,
+    estado,
+    scope,
+    historico,
+  });
 
+  const items = data.items || [];
   const total = items.length;
+
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const safePage = Math.min(currentPage, totalPages);
   const start = (safePage - 1) * PAGE_SIZE;
   const paginated = items.slice(start, start + PAGE_SIZE);
 
-  const badge = (s) => (
-    <span
-      className={`${styles.badge} ${
-        s === "APROBADA"
-          ? styles.ok
-          : s === "RECHAZADA"
-          ? styles.warn
-          : styles.wait
-      }`}
-    >
-      {s}
-    </span>
-  );
+  const badge = (s) => {
+    const estadoUpper = String(s || "").toUpperCase();
 
-  const linkFor = (p) => {
+    return (
+      <span
+        className={`${styles.badge} ${
+          estadoUpper === "APROBADA"
+            ? styles.ok
+            : estadoUpper === "RECHAZADA"
+            ? styles.warn
+            : estadoUpper === "PREORDEN" || estadoUpper === "EN_PREORDEN"
+            ? styles.info
+            : styles.wait
+        }`}
+      >
+        {s || "—"}
+      </span>
+    );
+  };
+
+  const buildLink = ({ newEstado = estado, newHistorico = historico, page = 1 }) => {
     const qs = new URLSearchParams();
-    if (estado) qs.set("estado", estado);
-    if (p > 1) qs.set("page", String(p));
+
+    if (newEstado) qs.set("estado", newEstado);
+    if (newHistorico === "Y") qs.set("historico", "Y");
+    if (page > 1) qs.set("page", String(page));
+
     const q = qs.toString();
     return `/solicitudes${q ? `?${q}` : ""}`;
   };
@@ -100,188 +119,210 @@ export default async function SolicitudesListPage({ searchParams }) {
       if (curr < max - 2) out.push({ label: "…" });
       add(max);
     }
+
     return out;
   };
-
-  // ✅ Regla: SOLO si está en estado PREORDEN (ajústalo a tu valor real)
-  const isPreorden = (estadoSolicitud) =>
-    (estadoSolicitud || "").toUpperCase() === "EN_PREORDEN";
-
-  // ✅ arma el link a anticipos con el idSolicitud
-  const anticiposHref = (idSolicitud) =>
-    `/anticipos?from=preorden&idSolicitud=${encodeURIComponent(idSolicitud)}`;
 
   return (
     <div className={styles.wrap}>
       <div className={styles.header}>
-        <h1 className={styles.title}>
-          {adminCompras ? "Solicitudes" : "Mis solicitudes"}
-        </h1>
+        <div>
+          <p className={styles.kicker}>Compras</p>
+          <h1 className={styles.title}>
+            {adminCompras ? "Solicitudes" : "Mis solicitudes"}
+          </h1>
+          <p className={styles.subtitle}>
+            {historico === "Y"
+              ? "Mostrando solicitudes históricas anteriores al 10/06/2026."
+              : "Mostrando solicitudes actuales desde el 10/06/2026."}
+          </p>
+        </div>
 
-        <div className={styles.filters}>
-          <a
-            className={`${styles.chip} ${!estado ? styles.active : ""}`}
-            href="/solicitudes"
-          >
-            Todas
-          </a>
-          <a
-            className={`${styles.chip} ${
-              estado === "PENDIENTE" ? styles.active : ""
-            }`}
-            href="/solicitudes?estado=PENDIENTE"
-          >
-            Pendientes
-          </a>
-          <a
-            className={`${styles.chip} ${
-              estado === "APROBADA" ? styles.active : ""
-            }`}
-            href="/solicitudes?estado=APROBADA"
-          >
-            Aprobadas
-          </a>
-          <a
-            className={`${styles.chip} ${
-              estado === "RECHAZADA" ? styles.active : ""
-            }`}
-            href="/solicitudes?estado=RECHAZADA"
-          >
-            Rechazadas
-          </a>
+        <div className={styles.resumeBox}>
+          <span className={styles.resumeNumber}>{total}</span>
+          <span className={styles.resumeText}>registros</span>
+        </div>
+      </div>
 
-          {/* opcional: filtro PREORDEN */}
-          <a
-            className={`${styles.chip} ${
-              estado === "PREORDEN" ? styles.active : ""
-            }`}
-            href="/solicitudes?estado=PREORDEN"
-          >
-            Preorden
-          </a>
+      <div className={styles.toolbar}>
+        <div className={styles.filterGroup}>
+          <span className={styles.filterLabel}>Estado</span>
+
+          <div className={styles.filters}>
+            <a
+              className={`${styles.chip} ${!estado ? styles.active : ""}`}
+              href={buildLink({ newEstado: "", page: 1 })}
+            >
+              Todas
+            </a>
+
+            <a
+              className={`${styles.chip} ${
+                estado === "PENDIENTE" ? styles.active : ""
+              }`}
+              href={buildLink({ newEstado: "PENDIENTE", page: 1 })}
+            >
+              Pendientes
+            </a>
+
+            <a
+              className={`${styles.chip} ${
+                estado === "APROBADA" ? styles.active : ""
+              }`}
+              href={buildLink({ newEstado: "APROBADA", page: 1 })}
+            >
+              Aprobadas
+            </a>
+
+            <a
+              className={`${styles.chip} ${
+                estado === "RECHAZADA" ? styles.active : ""
+              }`}
+              href={buildLink({ newEstado: "RECHAZADA", page: 1 })}
+            >
+              Rechazadas
+            </a>
+
+            <a
+              className={`${styles.chip} ${
+                estado === "PREORDEN" ? styles.active : ""
+              }`}
+              href={buildLink({ newEstado: "PREORDEN", page: 1 })}
+            >
+              Preorden
+            </a>
+          </div>
+        </div>
+
+        <div className={styles.filterGroup}>
+          <span className={styles.filterLabel}>Vista</span>
+
+          <div className={styles.segmented}>
+            <a
+              className={`${styles.segment} ${
+                historico !== "Y" ? styles.segmentActive : ""
+              }`}
+              href={buildLink({ newHistorico: "N", page: 1 })}
+            >
+              Actuales
+            </a>
+
+            <a
+              className={`${styles.segment} ${
+                historico === "Y" ? styles.segmentActive : ""
+              }`}
+              href={buildLink({ newHistorico: "Y", page: 1 })}
+            >
+              Históricas
+            </a>
+          </div>
         </div>
       </div>
 
       <div className={styles.card}>
         {total === 0 ? (
-          <div className={styles.empty}>No hay solicitudes para esta vista.</div>
+          <div className={styles.empty}>
+            <div className={styles.emptyIcon}>📄</div>
+            <strong>No hay solicitudes para esta vista.</strong>
+            <span>Cambia los filtros para consultar otros registros.</span>
+          </div>
         ) : (
           <>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>Código</th>
+            <div className={styles.tableWrap}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Código</th>
+                    {adminCompras && <th>Solicitante</th>}
+                    <th>Estado</th>
+                    <th>Creación</th>
+                    <th>Aprobación</th>
+                    <th>Renglones</th>
+                    <th className={styles.actionsTh}>Acciones</th>
+                  </tr>
+                </thead>
 
-                  {adminCompras && <th>Solicitante</th>}
+                <tbody>
+                  {paginated.map((r) => {
+                    const hasPend =
+                      r.Estado === "PENDIENTE" &&
+                      (r.AprobadorPendiente || r.NivelPendiente);
 
-                  <th>Estado</th>
-                  <th>Creación</th>
-                  <th>Aprobación</th>
-                  <th>Renglones</th>
+                    const tip = hasPend
+                      ? `En aprobación — ${r.AprobadorPendiente || ""}${
+                          r.NivelPendiente ? ` (Nivel ${r.NivelPendiente})` : ""
+                        }`
+                      : undefined;
 
-                  {adminCompras && <th>Anticipo</th>}
+                    return (
+                      <tr key={r.IdSolicitud}>
+                        <td data-label="Código">
+                          <strong className={styles.code}>
+                            {r.Codigo || `#${r.IdSolicitud}`}
+                          </strong>
+                        </td>
 
+                        {adminCompras && (
+                          <td data-label="Solicitante">
+                            <div className={styles.userBox}>
+                              <span className={styles.userName}>
+                                {r.SolicitanteNombre || "—"}
+                              </span>
+                              <span className={styles.userMail}>
+                                {r.SolicitanteCorreo || ""}
+                              </span>
+                            </div>
+                          </td>
+                        )}
 
-                  <th></th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {paginated.map((r) => {
-                  const hasPend =
-                    r.Estado === "PENDIENTE" &&
-                    (r.AprobadorPendiente || r.NivelPendiente);
-
-                  const tip = hasPend
-                    ? `En aprobación — ${r.AprobadorPendiente || ""}${
-                        r.NivelPendiente ? ` (Nivel ${r.NivelPendiente})` : ""
-                      }`
-                    : undefined;
-
-                  const showAnticipo = isPreorden(r.Estado);
-
-                  return (
-                    <tr key={r.IdSolicitud}>
-                      <td>{r.Codigo || `#${r.IdSolicitud}`}</td>
-
-                      {adminCompras && (
-                        <td>
-                          <div
-                            style={{
-                              display: "flex",
-                              flexDirection: "column",
-                            }}
-                          >
-                            <span style={{ fontWeight: 600 }}>
-                              {r.SolicitanteNombre || "—"}
-                            </span>
-                            <span style={{ fontSize: 12, opacity: 0.7 }}>
-                              {r.SolicitanteCorreo || ""}
-                            </span>
+                        <td
+                          data-label="Estado"
+                          className={styles.stateCell}
+                          title={tip}
+                        >
+                          {badge(r.Estado)}
+                          <div className={styles.subnote}>
+                            {hasPend ? (
+                              <>
+                                En aprobación —{" "}
+                                <b>{r.AprobadorPendiente || "—"}</b>
+                              </>
+                            ) : null}
                           </div>
                         </td>
-                      )}
 
-                      <td className={styles.stateCell} title={tip}>
-                        {badge(r.Estado)}
-                        <div className={styles.subnote}>
-                          {hasPend ? (
-                            <>
-                              En aprobación —{" "}
-                              <b>{r.AprobadorPendiente || "—"}</b>
-                            </>
-                          ) : null}
-                        </div>
-                      </td>
+                        <td data-label="Creación">{fmtDate(r.FechaCreacionSoli)}</td>
+                        <td data-label="Aprobación">
+                          {fmtDate(r.FechaAprobacionSoli)}
+                        </td>
+                        <td data-label="Renglones">{r.Renglones}</td>
 
-                      <td>{fmtDate(r.FechaCreacionSoli)}</td>
-                      <td>{fmtDate(r.FechaAprobacionSoli)}</td>
-                      <td>{r.Renglones}</td>
-                      {adminCompras && (
-                      <td>
-                        {String(r.Estado || "").toUpperCase() === "EN_PREORDEN" ? (
-                          r.TieneAnticipo === "Y" ? (
-                            <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                              <input type="checkbox" checked readOnly disabled />
-                              <span style={{ fontSize: 12, opacity: 0.8 }}>
-                                Anticipo creado ({r.NumeroAnticipo || "—"})
-                              </span>
-                            </label>
-                          ) : (
-                            <AnticipoCheck
-                            idSolicitud={r.IdSolicitud}
-                            tieneAnticipo={(r.TieneAnticipo || "N").toUpperCase() === "Y"}
-                            numeroAnticipo={r.NumeroAnticipo}
-                          />
-                          )
-                        ) : (
-                          <span style={{ opacity: 0.5 }}>—</span>
-                        )}
-                      </td>
-                    )}
-                      <td style={{ display: "flex", gap: 8 }}>
-                        {r.Estado === "PENDIENTE" && (
-                          <a
-                            className={styles.btn}
-                            href={`/solicitudes/${r.IdSolicitud}/edit`}
-                          >
-                            Editar
-                          </a>
-                        )}
+                        <td data-label="Acciones">
+                          <div className={styles.actions}>
+                            {r.Estado === "PENDIENTE" && (
+                              <a
+                                className={styles.btn}
+                                href={`/solicitudes/${r.IdSolicitud}/edit`}
+                              >
+                                Editar
+                              </a>
+                            )}
 
-                        <a
-                          className={styles.btnGhost}
-                          href={`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/solicitudes/${r.IdSolicitud}/pdf`}
-                          target="_blank"
-                        >
-                          PDF
-                        </a>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                            <a
+                              className={styles.btnGhost}
+                              href={`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/solicitudes/${r.IdSolicitud}/pdf`}
+                              target="_blank"
+                            >
+                              PDF
+                            </a>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
 
             <div className={styles.pager}>
               <span className={styles.pagerInfo}>
@@ -294,7 +335,11 @@ export default async function SolicitudesListPage({ searchParams }) {
                   className={`${styles.pageBtn} ${
                     safePage === 1 ? styles.disabled : ""
                   }`}
-                  href={safePage === 1 ? undefined : linkFor(safePage - 1)}
+                  href={
+                    safePage === 1
+                      ? undefined
+                      : buildLink({ page: safePage - 1 })
+                  }
                   aria-disabled={safePage === 1}
                 >
                   «
@@ -304,7 +349,7 @@ export default async function SolicitudesListPage({ searchParams }) {
                   p.n ? (
                     <a
                       key={i}
-                      href={linkFor(p.n)}
+                      href={buildLink({ page: p.n })}
                       className={`${styles.pageBtn} ${
                         p.active ? styles.pageActive : ""
                       }`}
@@ -323,7 +368,9 @@ export default async function SolicitudesListPage({ searchParams }) {
                     safePage === totalPages ? styles.disabled : ""
                   }`}
                   href={
-                    safePage === totalPages ? undefined : linkFor(safePage + 1)
+                    safePage === totalPages
+                      ? undefined
+                      : buildLink({ page: safePage + 1 })
                   }
                   aria-disabled={safePage === totalPages}
                 >

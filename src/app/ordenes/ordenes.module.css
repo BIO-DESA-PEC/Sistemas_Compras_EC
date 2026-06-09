@@ -216,3 +216,52 @@
 .newBtn:hover {
   background: #1d4ed8;
 }
+
+.ocContainer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.anticipoTag {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #fff7ed;
+  color: #c2410c;
+  border: 1px solid #fdba74;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .04em;
+}
+
+.anticipoWrapper {
+  position: relative;
+  display: inline-flex;
+}
+
+.tooltip {
+  position: absolute;
+  left: 0;
+  top: 120%;
+  min-width: 220px;
+
+  background: #0f172a;
+  color: white;
+
+  padding: 12px;
+  border-radius: 10px;
+
+  font-size: 12px;
+  line-height: 1.5;
+
+  opacity: 0;
+  visibility: hidden;
+  transition: all .2s ease;
+
+  z-index: 1000;
+}
+
+.anticipoWrapper:hover .tooltip {
+  opacity: 1;
+  visibility: visible;
+}

@@ -134,9 +134,20 @@ export default async function OCListPage({ searchParams }) {
           ) : (
             paginated.map((r) => (
               <div key={r.IdOC} className={styles.row}>
+                <div className={styles.ocContainer}>
                 <Link className={styles.link} href={`/ordenes/${r.IdOC}`}>
                   #{r.IdOC}
                 </Link>
+
+                {r.EsAnticipo && (
+                  <span
+                    className={styles.anticipoTag}
+                    title={`Orden generada desde el anticipo ${r.CodigoAnticipo || ""}`}
+                  >
+                    ANTICIPO
+                  </span>
+                )}
+                            </div>
 
                 <span className={styles.linkMuted}>
                   {r.IdSolicitud ? `#${r.IdSolicitud}` : "—"}
@@ -159,9 +170,16 @@ export default async function OCListPage({ searchParams }) {
 
                     return (
                       <>
-                        <div className={`${styles.badge} ${badgeClass}`}>
-                          {visual}
-                        </div>
+                        <div
+                      className={`${styles.badge} ${badgeClass}`}
+                      title={
+                        visual === "ANULADA"
+                          ? `Motivo: ${r.ComentarioOC || "Sin motivo registrado"}`
+                          : ""
+                      }
+                    >
+                      {visual}
+                    </div>
                         {r.EnAprobacion ? (
                           <div className={styles.subnote}>
                             En aprobación —{" "}

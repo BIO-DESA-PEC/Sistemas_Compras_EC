@@ -1,512 +1,246 @@
-"use client";
-
-import { useEffect, useState } from "react";
+import { auth } from "@/auth";
+import { redirect } from "next/navigation";
+import { getUserByEmail } from "@/app/lib/backend";
+import { Eye, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
+import AnticipoFacturarButton from "./AnticipoFacturarButton";
 import styles from "./anticipos.module.css";
-import AnticipoModal from "./AnticipoModal";
-import AnticipoViewModal from "./AnticipoViewModal";
-import dynamic from "next/dynamic";
-import { useSearchParams } from "next/navigation";
 
-const FacturaPreviewModal = dynamic(
-  () => import("@/components/FacturaPreviewModal"),
-  { ssr: false }
-);
-
-const API = process.env.NEXT_PUBLIC_BACKEND_URL;
-const PAGE_SIZE = 20;
-
-export default function AnticiposPage() {
-  const [anticipos, setAnticipos] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showViewModal, setShowViewModal] = useState(false);
-  const [selectedAnticipo, setSelectedAnticipo] = useState(null);
-
-  const [page, setPage] = useState(1);
-
-  // ===== Facturación =====
-  const [showFacturaForm, setShowFacturaForm] = useState(false);
-  const [factEstable, setFactEstable] = useState("");
-  const [factPtoEmi, setFactPtoEmi] = useState("");
-  const [factSecu, setFactSecu] = useState("");
-  const [sending, setSending] = useState(false);
-
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [previewData, setPreviewData] = useState(null);
-
-  const searchParams = useSearchParams();
-  const idSolicitudQS = searchParams.get("idSolicitud"); // string o null
-  const fromQS = searchParams.get("from"); // "preorden" o null
-
-  async function loadAnticipos() {
-    try {
-      setLoading(true);
-      const res = await fetch(`${API}/api/anticipos`);
-      if (!res.ok) throw new Error("Error al cargar anticipos");
-      const data = await res.json();
-
-      // ✅ NO dedup aquí: el backend debe venir bien.
-      setAnticipos(data || []);
-      setPage(1);
-    } catch (err) {
-      console.error("ERROR CARGANDO ANTICIPOS:", err);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    loadAnticipos();
-  }, []);
-
-  useEffect(() => {
-    if (fromQS === "preorden" && idSolicitudQS) {
-      setShowCreateModal(true);
-    }
-  }, [fromQS, idSolicitudQS]);
-
-  function estadoClass(estado) {
-    const base = styles.estado;
-    if (!estado) return base;
-
-    const e = estado.toLowerCase();
-
-    if (e.includes("pend")) return `${base} ${styles.estadoPendiente}`;
-    if (e.includes("parc")) return `${base} ${styles.estadoParcial}`; // ✅ NUEVO
-    if (e.includes("paga")) return `${base} ${styles.estadoPagado}`;
-    if (e.includes("anul")) return `${base} ${styles.estadoAnulado}`;
-    return base;
-  }
-
-  async function handleCancel(anticipo) {
-  if (!anticipo?.code) return alert("No se encontró el código del anticipo.");
-
-  const estado = (anticipo.estadoAnticipo || "").toLowerCase();
-  if (estado !== "pendiente") {
-    return alert("Solo se pueden anular anticipos en estado Pendiente.");
-  }
-
-  const ok = window.confirm(
-    `¿Seguro que deseas anular el anticipo ${anticipo.numeroAnticipo}?`
-  );
-  if (!ok) return;
-
-  try {
-    setLoading(true);
-
-    const url = `${API}/api/anticipos/${encodeURIComponent(
-      anticipo.code
-    )}/anular`;
-
-    const res = await fetch(url, { method: "PUT" });
-
-    if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      throw new Error(txt || `HTTP ${res.status}`);
-    }
-
-    await loadAnticipos();
-  } catch (err) {
-    console.error("ERROR ANULANDO:", err);
-    alert("No se pudo anular el anticipo. " + (err?.message || ""));
-  } finally {
-    setLoading(false);
-  }
+function isAdminCompras(user) {
+  const r = (user?.RolNombre || "").trim().toUpperCase();
+  return r === "ADMINISTRADOR" || r === "COMPRAS";
 }
 
+async function fetchAnticipos({ userId, scope }) {
+  const base = process.env.NEXT_PUBLIC_BACKEND_URL;
+  const url = new URL(`${base}/api/anticipos`);
+  url.searchParams.set("userId", userId);
+  url.searchParams.set("scope", scope);
 
-  function abrirFacturar(anticipo) {
-    const estadoLower = (anticipo?.estadoAnticipo || "").toLowerCase();
-    if (!estadoLower.includes("paga"))
-      return alert("Solo se puede facturar cuando el anticipo está Pagado.");
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
 
-    setSelectedAnticipo(anticipo);
-    setShowFacturaForm(true);
-  }
+function fmtDate(s) {
+  if (!s) return "—";
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return s;
+  return d.toISOString().slice(0, 10);
+}
 
-  function cancelarPrefactura() {
-    setShowFacturaForm(false);
-    setFactEstable("");
-    setFactPtoEmi("");
-    setFactSecu("");
-  }
+function badge(estadoRaw) {
+  const estado = (estadoRaw || "PENDIENTE").toUpperCase();
 
-  const confirmarFacturaAnticipo = async () => {
-    const est = (factEstable || "").trim();
-    const pto = (factPtoEmi || "").trim();
-    const sec = (factSecu || "").trim();
+  const cls =
+    estado === "PAGADO"
+      ? styles.badgePagado
+      : estado === "APROBADA"
+      ? styles.badgeAprobada
+      : estado === "ANULADA" || estado === "RECHAZADA"
+      ? styles.badgeRechazada
+      : styles.badgePendiente;
 
-    if (!est || !pto || !sec)
-      return alert("Completa Establecimiento, Punto de Emisión y Secuencial.");
+  return <span className={`${styles.badge} ${cls}`}>{estado}</span>;
+}
 
-    setSending(true);
-    try {
-      setShowFacturaForm(false);
+function ActionButton({ href, title, children, variant = "blue" }) {
+  return (
+    <a
+      href={href}
+      title={title}
+      className={`${styles.actionBtn} ${styles[`action${variant}`]}`}
+    >
+      {children}
+    </a>
+  );
+}
 
-      const res = await fetch(`${API}/api/anticipos/factura/preview`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          Establecimiento: est,
-          PuntoEmision: pto,
-          Secuencial: sec,
-        }),
-      });
+export default async function AnticiposPage({ searchParams }) {
+  const session = await auth();
+  if (!session) redirect("/");
 
-      const data = await res.json().catch(() => null);
-      if (!res.ok)
-        throw new Error(data?.error || data?.message || "Error en preview");
+  const user = await getUserByEmail(session.user.email);
+  if (!user) redirect("/");
 
-      const draft = data?.draft || data?.Cabecera || {};
-const docEntry =
-  data?.docEntry ?? data?.DocEntry ?? draft?.DocEntry ?? draft?.docEntry ?? null;
+  const adminCompras = isAdminCompras(user);
+  const scope = adminCompras ? "all" : "mine";
 
-const normalized = {
-  encontrado: true,
-  docEntry,
-  DocEntry: docEntry,
+  const data = await fetchAnticipos({
+    userId: user.IdUsuario,
+    scope,
+  });
 
-  // ✅ Cabecera “compat” para FacturaPreviewModal
-  Cabecera: {
-  ...draft,
+  const items = data.items || [];
 
-  Serie: est,
-  PtoEmi: pto,
-  Secuencial: sec,
+  const currentPage = Number(searchParams?.page || 1);
+  const pageSize = 8;
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
 
-  NumAtCard:
-    draft?.NumAtCard ||
-    draft?.numAtCard ||
-    (est && pto && sec ? `${est}-${pto}${sec}` : ""),
-
-  CardCode: draft?.CardCode || draft?.cardCode || draft?.U_CardCode || "",
-  CardName: draft?.CardName || draft?.cardName || draft?.U_CardName || "",
-
-  // ✅ Autorización (guardar en varias llaves por compatibilidad)
-  NroAutorizacion:
-    draft?.NroAutorizacion ||
-    draft?.U_NroAutorizacion ||
-    draft?.U_SYP_NROAUT ||
-    draft?.U_SYP_NRO_AUT ||
-    draft?.AuthorizationNumber ||
-    "",
-
-  FechaAutorizacion:
-    draft?.FechaAutorizacion ||
-    draft?.U_FechaAutorizacion ||
-    draft?.U_SYP_FECHAAUT ||
-    draft?.U_SYP_FECHA_AUT ||
-    draft?.AuthorizationDate ||
-    "",
-
-  // ✅ ALIAS: si tu modal lee UDF directo
-  U_SYP_NROAUT:
-    draft?.U_SYP_NROAUT ||
-    draft?.U_SYP_NRO_AUT ||
-    draft?.U_NroAutorizacion ||
-    draft?.NroAutorizacion ||
-    "",
-
-  U_SYP_FECHAAUT:
-    draft?.U_SYP_FECHAAUT ||
-    draft?.U_SYP_FECHA_AUT ||
-    draft?.U_FechaAutorizacion ||
-    draft?.FechaAutorizacion ||
-    "",
-},
-
-
-  // ✅ Líneas
-  Lineas: data?.Lineas || draft?.DocumentLines || [],
-
-  urlPdf: data?.urlPdf || null,
-};
-
-      setPreviewData(normalized);
-      setPreviewOpen(true);
-    } catch (e) {
-      console.error(e);
-      alert("Error en preview: " + (e?.message || String(e)));
-    } finally {
-      setSending(false);
-    }
-  };
-
-  // ====== Paginación ======
-  const total = anticipos.length;
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const currentPage = Math.min(page, totalPages);
-  const startIndex = (currentPage - 1) * PAGE_SIZE;
-  const endIndex = Math.min(total, startIndex + PAGE_SIZE);
-  const pageItems = anticipos.slice(startIndex, endIndex);
-
-  function goToPage(p) {
-    if (p < 1 || p > totalPages) return;
-    setPage(p);
-  }
+  const safePage = Math.min(Math.max(currentPage, 1), totalPages);
+  const start = (safePage - 1) * pageSize;
+  const paginatedItems = items.slice(start, start + pageSize);
 
   return (
-    <div className={styles.container}>
-      <div className={styles.headerRow}>
-        <h1>Anticipos</h1>
+    <div className={styles.wrap}>
+      <div className={styles.header}>
+        <div>
+          <h1 className={styles.title}>
+            {adminCompras ? "Anticipos" : "Mis anticipos"}
+          </h1>
+          <p className={styles.subtitle}>
+            Gestión y seguimiento de solicitudes de anticipo.
+          </p>
+        </div>
+
+        <div className={styles.filters}>
+          <a className={`${styles.chip} ${styles.active}`} href="/anticipos">
+            Todos
+          </a>
+          <a className={styles.primaryChip} href="/anticipos/new">
+            Nueva solicitud de anticipo
+          </a>
+        </div>
       </div>
 
-      {loading && <p>Cargando...</p>}
-
-      {!loading && (
-        <>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                {[
-                  "# Anticipo",
-                  "Solicitud",
-                  "Detalle gasto",
-                  "Identificación",
-                  "Fecha pago",
-                  "Estado",
-                  "Valor",
-                  "Pagado",  
-                  "Saldo", 
-                  "Acciones",
-                ].map((h) => (
-                  <th key={h}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-
-            <tbody>
-              {pageItems.map((a, idx) => {
-                const estadoLower = (a.estadoAnticipo || "").toLowerCase();
-                const puedeAnular = estadoLower === "pendiente";
-                const puedeFacturar = estadoLower.includes("paga");
-
-                // ✅ KEY BLINDADA (no se repite)
-                const rowKey = `anti-${a.code ?? "x"}-${a.docEntry ?? "x"}-${a.numeroAnticipo ?? "x"}-${idx}`;
-
-                return (
-                  <tr key={rowKey}>
-                    <td>{a.numeroAnticipo}</td>
-                    <td>{a.IdSolicitud ? `#${a.IdSolicitud}` : "—"}</td>
-                    <td>{a.detalleGasto}</td>
-                    <td>{a.identificacion}</td>
-                    <td>{a.fechaPago?.substring(0, 10)}</td>
-
-                    <td>
-                      <span className={estadoClass(a.estadoAnticipo)}>
-                        {a.estadoAnticipo}
-                      </span>
-                    </td>
-
-                    <td>{a.valor ?? "—"}</td>
-                    <td>{a.montoPagado ?? 0}</td>
-                    <td>{a.saldo ?? "—"}</td>
-
-                    <td>
-                      <div className={styles.actions}>
-                        <button
-                          type="button"
-                          className={styles.actionBtn}
-                          onClick={() => {
-                            setSelectedAnticipo(a);
-                            setShowViewModal(true);
-                          }}
-                        >
-                          👁 Ver
-                        </button>
-
-                        {a.adjuntoUrl && (
-                          <a
-                            className={styles.actionBtn}
-                            href={a.adjuntoUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            ⬇ Descargar
-                          </a>
-                        )}
-
-                        {puedeFacturar && (
-                          <button
-                            type="button"
-                            className={`${styles.actionBtn} ${styles.actionBtnOk}`}
-                            onClick={() => abrirFacturar(a)}
-                          >
-                            🧾 Facturar
-                          </button>
-                        )}
-
-                        {puedeAnular && (
-                          <button
-                            type="button"
-                            className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
-                            onClick={() => handleCancel(a)}
-                          >
-                            ✖ Anular
-                          </button>
-                        )}
-                      </div>
-                    </td>
+      <div className={styles.card}>
+        {items.length === 0 ? (
+          <div className={styles.empty}>
+            No hay solicitudes de anticipo registradas.
+          </div>
+        ) : (
+          <>
+            <div className={styles.tableWrap}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Código</th>
+                    {adminCompras && <th>Solicitante</th>}
+                    <th>Fecha</th>
+                    <th>Monto</th>
+                    <th>Beneficiario</th>
+                    <th>Motivo</th>
+                    <th>Liquidación</th>
+                    <th>Estado</th>
+                    <th className={styles.center}>Acciones</th>
                   </tr>
-                );
-              })}
+                </thead>
 
-              {pageItems.length === 0 && (
-                <tr>
-                  <td colSpan={8}>No hay anticipos en esta página.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                <tbody>
+                  {paginatedItems.map((a) => {
+                    const estado = (a.Estado || "").toUpperCase();
 
-          <div className={styles.paginationRow}>
-            <div className={styles.paginationInfo}>
-              {total > 0
-                ? `Mostrando ${startIndex + 1}–${endIndex} de ${total}`
-                : "Sin anticipos registrados"}
+                    return (
+                      <tr key={a.IdAnticipo}>
+                        <td>
+                          <span className={styles.code}>
+                            {a.Codigo || `ANT-${a.IdAnticipo}`}
+                          </span>
+                        </td>
+
+                        {adminCompras && (
+                          <td>
+                            <div className={styles.userName}>
+                              {a.SolicitanteNombre || "—"}
+                            </div>
+                            <div className={styles.userEmail}>
+                              {a.SolicitanteCorreo || ""}
+                            </div>
+                          </td>
+                        )}
+
+                        <td>{fmtDate(a.Fecha)}</td>
+
+                        <td>
+                          <span className={styles.amount}>
+                            {a.Monto} {a.Moneda}
+                          </span>
+                        </td>
+
+                        <td>{a.BeneficiarioCheque || "—"}</td>
+
+                        <td className={styles.reason}>
+                          {a.Motivo1 || "—"}
+                        </td>
+
+                        <td>{fmtDate(a.FechaMaximaLiquidacion)}</td>
+
+                        <td>{badge(a.Estado)}</td>
+
+                        <td>
+                          <div className={styles.actions}>
+                            <ActionButton
+                              href={`/anticipos/${a.IdAnticipo}`}
+                              title="Ver detalle"
+                              variant="blue"
+                            >
+                              <Eye size={17} />
+                            </ActionButton>
+
+                            {adminCompras && estado !== "ANULADA" && (
+                              <ActionButton
+                                href={`/anticipos/${a.IdAnticipo}/estado`}
+                                title="Cambiar estado"
+                                variant="purple"
+                              >
+                                <RefreshCw size={17} />
+                              </ActionButton>
+                            )}
+
+                            {adminCompras && estado === "PAGADO" && (
+                            <AnticipoFacturarButton
+                                idAnticipo={a.IdAnticipo}
+                                idOC={a.IdOC}
+                                userId={user.IdUsuario}
+                            />
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
 
-            <div className={styles.paginationButtons}>
-              <button
-                className={styles.pageBtn}
-                disabled={currentPage <= 1}
-                onClick={() => goToPage(currentPage - 1)}
-              >
-                «
-              </button>
+            <div className={styles.pagination}>
+              <div className={styles.pageInfo}>
+                Mostrando {start + 1} - {Math.min(start + pageSize, items.length)} de{" "}
+                {items.length}
+              </div>
 
-              <button className={`${styles.pageBtn} ${styles.pageBtnActive}`}>
-                {currentPage}
-              </button>
+              <div className={styles.pageControls}>
+                <a
+                  className={`${styles.pageBtn} ${
+                    safePage === 1 ? styles.disabled : ""
+                  }`}
+                  href={safePage === 1 ? "#" : `/anticipos?page=${safePage - 1}`}
+                >
+                  <ChevronLeft size={16} />
+                  Anterior
+                </a>
 
-              <button
-                className={styles.pageBtn}
-                disabled={currentPage >= totalPages}
-                onClick={() => goToPage(currentPage + 1)}
-              >
-                »
-              </button>
+                <span className={styles.pageNumber}>
+                  Página {safePage} de {totalPages}
+                </span>
+
+                <a
+                  className={`${styles.pageBtn} ${
+                    safePage === totalPages ? styles.disabled : ""
+                  }`}
+                  href={
+                    safePage === totalPages
+                      ? "#"
+                      : `/anticipos?page=${safePage + 1}`
+                  }
+                >
+                  Siguiente
+                  <ChevronRight size={16} />
+                </a>
+              </div>
             </div>
-          </div>
-        </>
-      )}
-
-      {/* ✅ Crear anticipo (con IdSolicitud opcional desde QS) */}
-      {showCreateModal && (
-        <AnticipoModal
-          onClose={() => setShowCreateModal(false)}
-          onSuccess={loadAnticipos}
-          idSolicitud={idSolicitudQS ? parseInt(idSolicitudQS, 10) : null}
-        />
-      )}
-
-      {showViewModal && (
-        <AnticipoViewModal
-          anticipo={selectedAnticipo}
-          onClose={() => setShowViewModal(false)}
-        />
-      )}
-
-      {previewOpen && previewData && (
-        <FacturaPreviewModal
-          open={previewOpen}
-          data={previewData}
-          onClose={() => {
-            setPreviewOpen(false);
-            setPreviewData(null);
-          }}
-          onUse={async (payload) => {
-            try {
-              const cabeceraFix = {
-                ...(payload?.Cabecera || {}),
-                CardCode:
-                  payload?.Cabecera?.CardCode ||
-                  previewData?.Cabecera?.CardCode ||
-                  previewData?.Cabecera?.CardCode?.trim?.(),
-              };
-
-              const res = await fetch(`${API}/api/anticipos/factura/borrador`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  numeroAnticipo: selectedAnticipo?.numeroAnticipo,
-                  Cabecera: cabeceraFix,
-                  Lineas: payload.Lineas,
-                }),
-              });
-
-              if (!res.ok) throw new Error(await res.text());
-
-              setPreviewOpen(false);
-              setPreviewData(null);
-            } catch (e) {
-              console.error(e);
-              alert("No se pudo guardar el borrador de factura del anticipo");
-            }
-          }}
-        />
-      )}
-
-      {showFacturaForm && (
-        <div className={styles.modalOverlay} role="dialog" aria-modal="true">
-          <div className={styles.modalBox}>
-            <h3 className={styles.modalTitle}>
-              Datos para facturar anticipo {selectedAnticipo?.numeroAnticipo || ""}
-            </h3>
-
-            <div className={styles.formGrid}>
-              <label>
-                <span>Establecimiento</span>
-                <input
-                  value={factEstable}
-                  onChange={(e) => setFactEstable(e.target.value)}
-                  placeholder="001"
-                  maxLength={10}
-                />
-              </label>
-
-              <label>
-                <span>Punto de emisión</span>
-                <input
-                  value={factPtoEmi}
-                  onChange={(e) => setFactPtoEmi(e.target.value)}
-                  placeholder="002"
-                  maxLength={10}
-                />
-              </label>
-
-              <label className={styles.gridFull}>
-                <span>Secuencial</span>
-                <input
-                  value={factSecu}
-                  onChange={(e) => setFactSecu(e.target.value)}
-                  placeholder="00001234"
-                  maxLength={20}
-                />
-              </label>
-            </div>
-
-            <div className={styles.modalActions}>
-              <button
-                className={styles.secondary}
-                onClick={cancelarPrefactura}
-                disabled={sending}
-              >
-                Cancelar
-              </button>
-
-              <button
-                className={styles.primary}
-                onClick={confirmarFacturaAnticipo}
-                disabled={sending}
-              >
-                {sending ? "Enviando..." : "Confirmar"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </div>
     </div>
   );
 }
