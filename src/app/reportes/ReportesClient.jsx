@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import styles from "./reportes.module.css";
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE || "https://back-compras-ec.onrender.com";
+  process.env.NEXT_PUBLIC_API_BASE || "https://compras-back-ec-prod.onrender.com";
 
 export default function ReportesClient() {
   const [loading, setLoading] = useState(true);

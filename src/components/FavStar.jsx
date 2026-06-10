@@ -8,7 +8,7 @@ export default function FavStar({
   userEmail,     // opcional
   initial = false,
   size = 28,
-  apiBase = process.env.NEXT_PUBLIC_BACKEND_URL || "https://back-compras-ec.onrender.com",
+  apiBase = process.env.NEXT_PUBLIC_BACKEND_URL || "https://compras-back-ec-prod.onrender.com",
   onToggled,     // 👈 callback para router.refresh()
 }) {
   const [fav, setFav] = useState(!!initial);

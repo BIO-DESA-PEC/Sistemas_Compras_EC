@@ -44,7 +44,7 @@ interface ProveedorPickerProps {
   title?: string;
 }
 
-const API_URL = "https://back-compras-ec.onrender.com/api/proveedores";
+const API_URL = "https://compras-back-ec-prod.onrender.com/api/proveedores";
 
 /* ========= Type guards ========= */
 function isProveedor(obj: unknown): obj is Proveedor {

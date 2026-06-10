@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import styles from "./plantillasMensuales.module.css";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "https://back-compras-ec.onrender.com";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "https://compras-back-ec-prod.onrender.com";
 
 const EMPTY_ITEM = {
   Orden: 0,

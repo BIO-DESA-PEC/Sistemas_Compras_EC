@@ -307,7 +307,7 @@ export default function FacturaPreviewModal({
       return deptosCache[k];
     }
 
-    const base = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://back-compras-ec.onrender.com';
+    const base = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://compras-back-ec-prod.onrender.com';
     const res = await fetch(`${base}/api/dimensiones/departamento?linea=${encodeURIComponent(k)}`);
     const j = await res.json();
 
@@ -489,7 +489,7 @@ export default function FacturaPreviewModal({
 
   useEffect(() => {
     if (!open) return;
-    const base = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://back-compras-ec.onrender.com';
+    const base = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://compras-back-ec-prod.onrender.com';
 
     (async () => {
       try {
@@ -531,7 +531,7 @@ export default function FacturaPreviewModal({
 
   useEffect(() => {
     if (!open || !data || gastosLoaded) return;
-    const base = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://back-compras-ec.onrender.com';
+    const base = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://compras-back-ec-prod.onrender.com';
 
     (async () => {
       try {
@@ -704,7 +704,7 @@ export default function FacturaPreviewModal({
       setSending(true);
       setMsg(null);
 
-      const base = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://back-compras-ec.onrender.com';
+      const base = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://compras-back-ec-prod.onrender.com';
       const res = await fetch(
         `${base}/api/oc/${data?.OcId || 0}/prefactura/notificar-articulo`,
         {

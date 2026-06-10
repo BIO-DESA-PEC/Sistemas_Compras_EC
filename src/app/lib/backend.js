@@ -2,7 +2,7 @@
 
 // Base pública (llega al cliente). Ej.: http://127.0.0.1:8000
 export const API_BASE =
-  process.env.NEXT_PUBLIC_BACKEND_URL || "https://back-compras-ec.onrender.com";
+  process.env.NEXT_PUBLIC_BACKEND_URL || "https://compras-back-ec-prod.onrender.com";
 
 // Helper para armar URLs de forma segura
 function apiUrl(path, params) {
@@ -580,7 +580,7 @@ export async function updateFacturaSapDraft(idOC, docEntry, payload) {
   });
 }
 export async function createOCDirecta(payload) {
-  const base = process.env.NEXT_PUBLIC_BACKEND_URL || "https://back-compras-ec.onrender.com";
+  const base = process.env.NEXT_PUBLIC_BACKEND_URL || "https://compras-back-ec-prod.onrender.com";
 
   const res = await fetch(`${base}/api/oc-directa`, {
     method: "POST",

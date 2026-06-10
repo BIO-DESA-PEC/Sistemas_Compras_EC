@@ -114,7 +114,7 @@ export default function PreOCEditor({ preoc, detalleInicial }) {
     const cardCode = id?.startsWith("PL") ? id : `PL${id}`;
     try {
       const res = await fetch(
-        `https://back-compras-ec.onrender.com/api/proveedores-sap/${encodeURIComponent(
+        `https://compras-back-ec-prod.onrender.com/api/proveedores-sap/${encodeURIComponent(
           cardCode
         )}`
       );

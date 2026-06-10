@@ -44,7 +44,7 @@ export default function FacturaPreviewModalArticulo({
   rolId = null,
   lockSoloGasto = false,
 }) {
-  const baseUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://back-compras-ec.onrender.com';
+  const baseUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://compras-back-ec-prod.onrender.com';
 
   const [sending, setSending] = useState(false);
   const [msg, setMsg] = useState(null);
