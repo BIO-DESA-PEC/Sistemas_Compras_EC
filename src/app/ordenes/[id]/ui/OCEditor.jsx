@@ -801,8 +801,8 @@ const puedeFacturar =
   setFactMode("NOTA_VENTA");
 
   setPreviewData({
-    IdOC: oc.IdOC,
-    OcId: oc.IdOC,
+    IdOC: ocId,
+    OcId: ocId,
     DocEntry: null,
     TipoOC: "SERVICIO",
     EsNotaVenta: true,
@@ -1572,7 +1572,7 @@ const puedeFacturar =
 
       <FacturaPreviewModal
         open={previewOpen}
-        data={previewData ? { ...previewData, OcId: ocId, Tipo: tipoOC } : null}
+        data={previewData ? { ...previewData, IdOC: ocId, OcId: ocId, Tipo: tipoOC } : null}
         onClose={() => {
           setPreviewOpen(false);
           setPreviewData(null);
