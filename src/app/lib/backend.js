@@ -510,12 +510,14 @@ export async function validarFacturaDuplicadaOC({
   establecimiento,
   puntoEmision,
   secuencial,
+  cardCode,
   excludeIdOC,
 }) {
   const url = apiUrl("/api/oc/factura-existe", {
     establecimiento,
     puntoEmision,
     secuencial,
+    cardCode,
     excludeIdOC,
   });
 
