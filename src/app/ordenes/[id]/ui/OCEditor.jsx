@@ -530,11 +530,12 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
 
     if (est && pto && sec) {
         const dup = await validarFacturaDuplicadaOC({
-          establecimiento: est,
-          puntoEmision: pto,
-          secuencial: sec,
-          excludeIdOC: oc.IdOC,
-        });
+        establecimiento: est,
+        puntoEmision: pto,
+        secuencial: sec,
+        cardCode: card,
+        excludeIdOC: oc.IdOC,
+      });
 
         if (dup?.existe) {
           alert(dup?.mensaje || `La factura ${est}-${pto}-${sec} ya está registrada en otra OC.`);
@@ -599,11 +600,12 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
     try {
       setShowFacturaForm(false);
       const dup = await validarFacturaDuplicadaOC({
-        establecimiento: est,
-        puntoEmision: pto,
-        secuencial: sec,
-        excludeIdOC: oc.IdOC,
-      });
+      establecimiento: est,
+      puntoEmision: pto,
+      secuencial: sec,
+      cardCode: card,
+      excludeIdOC: oc.IdOC,
+    });
 
       if (dup?.existe) {
         alert(dup?.mensaje || `La factura ${est}-${pto}-${sec} ya está registrada en otra OC.`);
