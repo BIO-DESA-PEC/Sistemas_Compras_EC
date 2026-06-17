@@ -817,7 +817,9 @@ function construirReferencia(serie, ptoEmi, secuencial) {
   const cardName = String(cabecera.CardName || "").trim();
 
   if (!cardCode) throw new Error("Ingresa el RUC/CardCode del proveedor.");
-  if (!cardCode.startsWith("PL")) throw new Error("El CardCode debe iniciar con PL + RUC.");
+  if (!cardCode.startsWith("PL") && !cardCode.startsWith("PE")) {
+    throw new Error("El CardCode debe iniciar con PL o PE + RUC.");
+  }
   if (!cardName) throw new Error("Ingresa el nombre del proveedor.");
 
   const payloadNV = {
@@ -1131,7 +1133,7 @@ if (esNotaVenta) {
 
             <div className={styles.alertInfo}>
               Si el proveedor no existe en SAP, se creará con el CardCode ingresado.
-              Debe ser <b>PL + RUC</b>.
+              Debe ser <b>PL o PE + RUC</b>.
             </div>
 
             <div className={styles.formGrid}>
