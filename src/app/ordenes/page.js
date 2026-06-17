@@ -1,14 +1,27 @@
 import Link from "next/link";
+import { auth } from "@/auth";
 import { getOCList } from "@/app/lib/backend";
+import NumeroOrdenCompraCell from "./NumeroOrdenCompraCell";
 import styles from "./ordenes.module.css";
 
 export const dynamic = "force-dynamic";
 const PAGE_SIZE = 15;
 
 export default async function OCListPage({ searchParams }) {
+  const session = await auth();
+
+  const userEmail = (session?.user?.email || "").trim().toLowerCase();
+  const rolNombre = (session?.user?.RolNombre || "").trim().toUpperCase();
+  const rolId = Number(session?.user?.RolId);
+
+  const isAdmin = rolId === 1 || rolNombre === "ADMINISTRADOR";
+  const isBrithanny = userEmail === "brithanny.ortega@biocellsmed.com";
+  const canEditNumeroOrdenCompra = true;
+  
   const estado = (searchParams?.estado ?? "Todos").toString();
   const q = (searchParams?.q ?? "").toString().trim();
   const historico = searchParams?.historico === "Y" ? "Y" : "N";
+  const facturaSAP = (searchParams?.facturaSAP ?? "").toString().trim();
 
   const pageParam = parseInt((searchParams?.page ?? "1").toString(), 10);
   const currentPage = Number.isNaN(pageParam) || pageParam < 1 ? 1 : pageParam;
@@ -26,6 +39,14 @@ export default async function OCListPage({ searchParams }) {
     items = [];
   }
 
+  if (facturaSAP) {
+    const needle = facturaSAP.toLowerCase();
+
+    items = items.filter((x) =>
+      String(x.FacturaSAP || "").toLowerCase().includes(needle)
+    );
+  }
+
   const total = items.length;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const safePage = Math.min(currentPage, totalPages);
@@ -41,10 +62,16 @@ export default async function OCListPage({ searchParams }) {
     "RECHAZADA",
   ];
 
-  const buildLink = ({ newEstado = estado, newHistorico = historico, page = 1 }) => {
+  const buildLink = ({
+    newEstado = estado,
+    newHistorico = historico,
+    newFacturaSAP = facturaSAP,
+    page = 1,
+  } = {}) => {
     const qs = new URLSearchParams();
 
     if (q) qs.set("q", q);
+    if (newFacturaSAP) qs.set("facturaSAP", newFacturaSAP);
     if (newEstado && newEstado !== "Todos") qs.set("estado", newEstado);
     if (newHistorico === "Y") qs.set("historico", "Y");
     if (page > 1) qs.set("page", String(page));
@@ -66,9 +93,12 @@ export default async function OCListPage({ searchParams }) {
     } else {
       add(1);
       if (curr > 3) out.push({ label: "…" });
+
       const s = Math.max(2, curr - 1);
       const e = Math.min(max - 1, curr + 1);
+
       for (let n = s; n <= e; n++) add(n);
+
       if (curr < max - 2) out.push({ label: "…" });
       add(max);
     }
@@ -95,19 +125,29 @@ export default async function OCListPage({ searchParams }) {
         </div>
 
         <div className={styles.filters}>
-          {estadoOpts.map((est) => (
-            <Link
-              key={est}
-              href={buildLink({ newEstado: est, page: 1 })}
-              className={`${styles.chip} ${estado === est ? styles.active : ""}`}
-            >
-              {est}
-            </Link>
-          ))}
+          <div className={styles.chipsGroup}>
+            {estadoOpts.map((est) => (
+              <Link
+                key={est}
+                href={buildLink({
+                  newEstado: est,
+                  page: 1,
+                })}
+                className={`${styles.chip} ${
+                  estado === est ? styles.active : ""
+                }`}
+              >
+                {est}
+              </Link>
+            ))}
+          </div>
 
           <div className={styles.segmented}>
             <Link
-              href={buildLink({ newHistorico: "N", page: 1 })}
+              href={buildLink({
+                newHistorico: "N",
+                page: 1,
+              })}
               className={`${styles.segment} ${
                 historico !== "Y" ? styles.segmentActive : ""
               }`}
@@ -116,7 +156,10 @@ export default async function OCListPage({ searchParams }) {
             </Link>
 
             <Link
-              href={buildLink({ newHistorico: "Y", page: 1 })}
+              href={buildLink({
+                newHistorico: "Y",
+                page: 1,
+              })}
               className={`${styles.segment} ${
                 historico === "Y" ? styles.segmentActive : ""
               }`}
@@ -132,6 +175,10 @@ export default async function OCListPage({ searchParams }) {
 
             {historico === "Y" && (
               <input type="hidden" name="historico" value="Y" />
+            )}
+
+            {facturaSAP && (
+              <input type="hidden" name="facturaSAP" value={facturaSAP} />
             )}
 
             <input
@@ -156,7 +203,74 @@ export default async function OCListPage({ searchParams }) {
             <div>Solicitó</div>
             <div>Fecha</div>
             <div>Estado</div>
-            <div className={styles.num}>Total</div>
+            <div>Draft SAP</div>
+
+            <div className={styles.filterBox}>
+              <button
+                type="button"
+                popoverTarget="facturaSapFilter"
+                className={`${styles.filterHeader} ${
+                  facturaSAP ? styles.filterHeaderActive : ""
+                }`}
+                title="Buscar por Factura SAP"
+              >
+                <span>Factura SAP</span>
+
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="M4 5h16l-6 7v5l-4 2v-7L4 5z"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+
+              <div
+                id="facturaSapFilter"
+                popover="auto"
+                className={styles.filterPanel}
+              >
+                <form action="/ordenes" method="get">
+                  <strong>Factura SAP</strong>
+                  <span>Buscar orden por factura SAP</span>
+
+                  {q && <input type="hidden" name="q" value={q} />}
+
+                  {estado && estado !== "Todos" && (
+                    <input type="hidden" name="estado" value={estado} />
+                  )}
+
+                  {historico === "Y" && (
+                    <input type="hidden" name="historico" value="Y" />
+                  )}
+
+                  <div className={styles.filterInputWrap}>
+                    <input
+                      name="facturaSAP"
+                      placeholder="Ingrese factura SAP"
+                      defaultValue={facturaSAP}
+                      autoComplete="off"
+                    />
+
+                    <button type="submit">🔎</button>
+                  </div>
+
+                  {facturaSAP && (
+                    <Link
+                      href={buildLink({ newFacturaSAP: "", page: 1 })}
+                      className={styles.clearFilter}
+                    >
+                      Limpiar filtro
+                    </Link>
+                  )}
+                </form>
+              </div>
+            </div>
+
+            <div>Número Orden Compra</div>
+            <div className={styles.num}>Total SAP</div>
             <div className={styles.actionsH}>Acciones</div>
           </div>
 
@@ -191,7 +305,6 @@ export default async function OCListPage({ searchParams }) {
                 </span>
 
                 <div>{r.SolicitanteNombre || "—"}</div>
-
                 <div>{r.Fecha ?? "—"}</div>
 
                 <div className={styles.stateCell}>
@@ -203,16 +316,7 @@ export default async function OCListPage({ searchParams }) {
 
                     return (
                       <>
-                        <div
-                          className={`${styles.badge} ${badgeClass}`}
-                          title={
-                            visual === "ANULADA"
-                              ? `Motivo: ${
-                                  r.ComentarioOC || "Sin motivo registrado"
-                                }`
-                              : ""
-                          }
-                        >
+                        <div className={`${styles.badge} ${badgeClass}`}>
                           {visual}
                         </div>
 
@@ -231,8 +335,21 @@ export default async function OCListPage({ searchParams }) {
                   })()}
                 </div>
 
+                <div>{r.DraftDocEntry || "—"}</div>
+                <div>{r.FacturaSAP || "—"}</div>
+
+                <NumeroOrdenCompraCell
+                  idOC={r.IdOC}
+                  value={r.NumeroOrdenCompra}
+                  canEdit={canEditNumeroOrdenCompra}
+                  userEmail={userEmail}
+                />
+
                 <div className={styles.num}>
-                  {Number(r.Total || 0).toLocaleString()}
+                  {Number(r.Total || 0).toLocaleString("es-EC", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
                 </div>
 
                 <div className={styles.actions}>
@@ -240,35 +357,14 @@ export default async function OCListPage({ searchParams }) {
                     <Link
                       href={`/ordenes/${r.IdOC}?facturar=1`}
                       className={styles.facturarBtn}
-                      aria-label={`Facturar OC #${r.IdOC}`}
                       title="Facturar"
                     >
-                      <svg
-                        className={styles.icon}
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        aria-hidden="true"
-                      >
-                        <path
-                          d="M6 3h12v18l-3-2-3 2-3-2-3 2V3z"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                        />
-                        <path
-                          d="M8.5 8H15.5M8.5 12H15.5M8.5 16H13"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                        />
-                      </svg>
+                      📄
                     </Link>
                   ) : r.Estado === "GENERADA" ? (
                     <Link
                       href={`/ordenes/${r.IdOC}`}
                       className={styles.iconBtn}
-                      aria-label={`Editar OC #${r.IdOC}`}
                       title="Editar OC"
                     >
                       ✎
@@ -277,7 +373,6 @@ export default async function OCListPage({ searchParams }) {
                     <Link
                       href={`/ordenes/${r.IdOC}`}
                       className={`${styles.iconBtn} ${styles.ghost}`}
-                      aria-label={`Ver OC #${r.IdOC}`}
                       title="Ver OC"
                     >
                       👁
@@ -289,7 +384,6 @@ export default async function OCListPage({ searchParams }) {
                     target="_blank"
                     rel="noopener"
                     className={`${styles.iconBtn} ${styles.ghost}`}
-                    aria-label={`Descargar PDF OC #${r.IdOC}`}
                     title="PDF"
                   >
                     PDF
@@ -313,7 +407,6 @@ export default async function OCListPage({ searchParams }) {
                   safePage === 1 ? styles.disabled : ""
                 }`}
                 href={safePage === 1 ? "#" : buildLink({ page: safePage - 1 })}
-                aria-disabled={safePage === 1}
               >
                 «
               </Link>
@@ -341,9 +434,10 @@ export default async function OCListPage({ searchParams }) {
                   safePage === totalPages ? styles.disabled : ""
                 }`}
                 href={
-                  safePage === totalPages ? "#" : buildLink({ page: safePage + 1 })
+                  safePage === totalPages
+                    ? "#"
+                    : buildLink({ page: safePage + 1 })
                 }
-                aria-disabled={safePage === totalPages}
               >
                 »
               </Link>

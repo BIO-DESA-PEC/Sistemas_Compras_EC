@@ -619,3 +619,11 @@ export async function crearOCDesdeAnticipo(idAnticipo, userId) {
 
   return data;
 }
+
+export async function crearDraftNotaVentaOC(idOC, payload) {
+  return fetchJSON(apiUrl(`/api/oc/${idOC}/nota-venta/draft`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}

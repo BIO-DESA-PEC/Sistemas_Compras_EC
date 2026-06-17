@@ -6,8 +6,10 @@ import SearchSelect from '@/components/SearchSelect';
 import {
   persistFacturaSnapshotOC,
   updateFacturaSapDraft,
-  updateOCState
+  updateOCState,
+  crearDraftNotaVentaOC
 } from '@/app/lib/backend';
+import ProveedorPicker from "@/components/SupplierSelect";
 
 const IVA_OPTS = [
   { value: 'IVA_15', label: 'IVA 15%' },
@@ -64,7 +66,6 @@ export default function FacturaPreviewModal({
   const [clase, setClase] = useState('SERVICIO');
   const [sending, setSending] = useState(false);
   const [msg, setMsg] = useState(null);
-
   const rol = String(rolNombre || "").toUpperCase();
   const isAdmin = Number(rolId) === 1 || rol === "ADMINISTRADOR";
   const isData = Number(rolId) === 5 || rol === "DATA";
@@ -79,7 +80,7 @@ export default function FacturaPreviewModal({
   const [tipoVisual, setTipoVisual] = useState('SERVICIO');
   const readOnlyTotal = (modo === "facturas_sap") && (finalizado || yaTeniaGastoAlAbrir);
   const isLock = (modo === 'facturas_sap') && !!lockSoloGasto && !readOnlyTotal;
-
+  const esNotaVenta = !!data?.EsNotaVenta;
   /* ===== DIMENSIONES ===== */
   const [dLinea, setDLinea] = useState([]);
   const [dRegion, setDRegion] = useState([]);
@@ -87,6 +88,25 @@ export default function FacturaPreviewModal({
   const [deptosCache, setDeptosCache] = useState({});
 
   /* ===== CABECERA ===== */
+  const COMENTARIO_NV = "BORRADOR NOTA DE VENTA";
+function normalizarComentarioNotaVenta(value = "") {
+  const txt = String(value || "");
+
+  const extra = txt
+    .replace(COMENTARIO_NV, "")
+    .replace(/^[-|:\s]+/, "")
+    .trim();
+
+  return extra ? `${COMENTARIO_NV} - ${extra}` : COMENTARIO_NV;
+}
+function construirReferencia(serie, ptoEmi, secuencial) {
+  const s = String(serie || "").trim();
+  const p = String(ptoEmi || "").trim();
+  const sec = String(secuencial || "").trim();
+
+  if (!s && !p && !sec) return "";
+  return `${s}-${p}-${sec}`;
+}
   const buildCabecera = (d) => {
     const c = d?.Cabecera || {};
     const s = (v) => (v ?? '').toString();
@@ -263,9 +283,26 @@ export default function FacturaPreviewModal({
   }), [cabecera, data?.DocEntry]);
 
   const setCab = (k, v) => {
-    if (isLock || readOnlyTotal) return;
-    setCabecera(p => ({ ...p, [k]: v }));
-  };
+  if (isLock || readOnlyTotal) return;
+
+  setCabecera((p) => {
+    const next = { ...p, [k]: v };
+
+    if (["Serie", "PtoEmi", "Secuencial"].includes(k)) {
+      next.NumAtCard = construirReferencia(
+        next.Serie,
+        next.PtoEmi,
+        next.Secuencial
+      );
+    }
+
+    if (esNotaVenta && k === "Comments") {
+  next.Comments = normalizarComentarioNotaVenta(v);
+}
+
+    return next;
+  });
+};
 
   function deptoListForRow(lineaCode) {
     const k = String(lineaCode ?? '').trim();
@@ -352,27 +389,29 @@ export default function FacturaPreviewModal({
   };
 
   const addRow = () => {
-    if (readOnlyTotal || isLock) return;
+  if (readOnlyTotal || isLock) return;
 
-    setRows(prev => ([
-      ...prev,
-      {
-        ItemCode: '',
-        Descripcion: '',
-        Cuenta: '',
-        Cantidad: 1,
-        Precio: 0,
-        DatoAdicional: '',
-        Descuento: 0,
-        TaxCode: 'IVA_15',
-        CostingCode: '',
-        CostingCode2: '',
-        CostingCode3: '',
-        IdSustentoTributario: cabecera.IdSustentoTributario,
-        ConceptoGasto: ''
-      }
-    ]));
-  };
+  const datoBase = String(rows[0]?.DatoAdicional || "").trim();
+
+  setRows(prev => ([
+    ...prev,
+    {
+      ItemCode: '',
+      Descripcion: '',
+      Cuenta: '',
+      Cantidad: 1,
+      Precio: 0,
+      DatoAdicional: datoBase,
+      Descuento: 0,
+      TaxCode: 'IVA_15',
+      CostingCode: '',
+      CostingCode2: '',
+      CostingCode3: '',
+      IdSustentoTributario: cabecera.IdSustentoTributario,
+      ConceptoGasto: ''
+    }
+  ]));
+};
 
   const copiarDatoAdicional = (ix, modo = 'vacias') => {
     if (readOnlyTotal) return;
@@ -590,8 +629,13 @@ export default function FacturaPreviewModal({
       ...buildCabecera(data),
       DiscountPercent: Number(data?.Cabecera?.DiscountPercent ?? 0),
       TotalDiscount: totalDesc,
-      Comments: comentarioInicial,
-    }));
+      NumAtCard: construirReferencia(
+      buildCabecera(data).Serie,
+      buildCabecera(data).PtoEmi,
+      buildCabecera(data).Secuencial
+    ),
+    Comments: esNotaVenta ? COMENTARIO_NV : comentarioInicial,
+        }));
 
     setFinalizado(false);
     setDescuentoTotalFactura(totalDesc > 0 ? String(totalDesc) : "");
@@ -689,8 +733,14 @@ export default function FacturaPreviewModal({
       subtotalBruto > 0 ? ivaBaseBruta / subtotalBruto : 0;
 
     const ivaBaseNeta = sub * proporcionIva;
-    const iva = +(ivaBaseNeta * 0.15).toFixed(2);
-    const total = +(sub + iva).toFixed(2);
+
+    const iva = esNotaVenta
+      ? 0
+      : +(ivaBaseNeta * 0.15).toFixed(2);
+
+    const total = esNotaVenta
+      ? +sub.toFixed(2)
+      : +(sub + iva).toFixed(2);
 
     return {
       sub: +sub.toFixed(2),
@@ -730,11 +780,15 @@ export default function FacturaPreviewModal({
     setSending(true);
     setMsg(null);
 
-    const idOC = Number(data?.IdOC || data?.idOC || 0);
+    const idOC = Number(data?.IdOC || data?.OcId || data?.idOC || 0);
     const docEntry = Number(data?.DocEntry || 0);
 
-    if (!idOC || !docEntry) {
-      throw new Error("No se encontró IdOC o DocEntry del borrador.");
+    if (!idOC) {
+      throw new Error("No se encontró IdOC.");
+    }
+
+    if (!esNotaVenta && !docEntry) {
+      throw new Error("No se encontró DocEntry del borrador.");
     }
 
     const rowsActuales = (rows || []).map((r) => ({
@@ -758,7 +812,91 @@ export default function FacturaPreviewModal({
     if (!rowsActuales.length) {
       throw new Error("Debes tener al menos una línea.");
     }
+    if (esNotaVenta) {
+  const cardCode = String(cabecera.CardCode || "").trim().toUpperCase();
+  const cardName = String(cabecera.CardName || "").trim();
 
+  if (!cardCode) throw new Error("Ingresa el RUC/CardCode del proveedor.");
+  if (!cardCode.startsWith("PL")) throw new Error("El CardCode debe iniciar con PL + RUC.");
+  if (!cardName) throw new Error("Ingresa el nombre del proveedor.");
+
+  const payloadNV = {
+    Cabecera: {
+      CardCode: cardCode,
+      CardName: cardName,
+      Comments: String(cabecera.Comments || "BORRADOR NOTA DE VENTA").trim(),
+      DocDate: cabecera.DocDate || "",
+      DocDueDate: cabecera.DocDueDate || cabecera.DocDate || "",
+      Serie: String(cabecera.Serie || "").trim(),
+      PtoEmi: String(cabecera.PtoEmi || "").trim(),
+      Secuencial: String(cabecera.Secuencial || "").trim(),
+      NumAtCard: String(
+        cabecera.NumAtCard ||
+        `${cabecera.Serie}-${cabecera.PtoEmi}-${cabecera.Secuencial}`
+      ).trim(),
+      TipoDoc: "02",
+      TipoEmision: "P",
+      FormaPago: String(cabecera.FormaPago || "20").trim(),
+      TipoPago: String(cabecera.TipoPago || "01").trim(),
+      DiscountPercent: 0,
+      TotalDiscount: 0,
+    },
+    Lineas: rowsActuales.map((r) => {
+    const cantidad = Math.max(1, n2(r.Cantidad));
+    const precioUnitario = n2(r.Precio);
+    const precioTotalLinea = +(cantidad * precioUnitario).toFixed(2);
+
+    return {
+      Descripcion: String(r.Descripcion || "SERVICIO").trim(),
+      Cantidad: 1,
+      Precio: precioTotalLinea,
+      Descuento: n2(r.Descuento),
+      DatoAdicional: String(r.DatoAdicional || "").trim(),
+    };
+  }),
+  };
+
+  const resp = await crearDraftNotaVentaOC(idOC, payloadNV);
+  const docEntryNV = Number(resp.DocEntry);
+
+await persistFacturaSnapshotOC(idOC, docEntryNV, {
+  Cabecera: {
+    ...payloadNV.Cabecera,
+    DocEntry: docEntryNV,
+    DocTotal: resumen.sub,
+  },
+  Lineas: payloadNV.Lineas.map((l, idx) => ({
+    LineNum: idx,
+    ItemCode: "",
+    ItemDescription: l.Descripcion,
+    Descripcion: l.Descripcion,
+    Quantity: l.Cantidad,
+    Cantidad: l.Cantidad,
+    UnitPrice: l.Precio,
+    Precio: l.Precio,
+    DiscountPercent: 0,
+    Descuento: 0,
+    TaxCode: "IVA_0",
+    AccountCode: "",
+    Cuenta: "",
+    DatoAdicional: l.DatoAdicional || "",
+  })),
+});
+    if (!resp?.ok) {
+      throw new Error(resp?.error || "No se pudo crear el borrador de nota de venta.");
+    }
+
+    await updateOCState(idOC, {
+      estado: "PROCESADA",
+      comentario: payloadNV.Cabecera.Comments,
+    });
+
+    alert(`✅ Nota de venta creada correctamente en SAP. Draft #${resp.DocEntry}`);
+
+    if (typeof onClose === "function") onClose();
+    window.location.reload();
+    return;
+}
     const subtotalBase = rowsActuales.reduce(
       (acc, r) => acc + Math.max(0, n2(r.Cantidad) * n2(r.Precio)),
       0
@@ -954,9 +1092,275 @@ alert("✅ Borrador actualizado correctamente en SAP y OC procesada");
 
   if (!open || !data) return null;
 
-  const rowTypeClass = clase === 'ARTICULO' ? styles.articleRow : styles.serviceRow;
 
+const rowTypeClass = clase === 'ARTICULO' ? styles.articleRow : styles.serviceRow;
+
+if (esNotaVenta) {
   return (
+    <div className={styles.modalOverlay} role="dialog" aria-modal="true">
+      <div className={styles.modalBox}>
+        <div className={styles.modalHeader}>
+          <div className={styles.titleRow}>
+            <h3 className={styles.modalTitle}>
+              Nota de venta · Crear preliminar
+            </h3>
+
+            <button
+              type="button"
+              className={styles.closeX}
+              onClick={handleCerrar}
+              aria-label="Cerrar"
+            >
+              ×
+            </button>
+          </div>
+
+          <div className={styles.inlineBar}>
+            <label className={styles.inlineField}>
+              <span>Clase</span>
+              <select value="SERVICIO" className={styles.select} disabled>
+                <option value="SERVICIO">SERVICIO</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div className={styles.modalContent}>
+          <div className={styles.section}>
+            <h4>Cabecera</h4>
+
+            <div className={styles.alertInfo}>
+              Si el proveedor no existe en SAP, se creará con el CardCode ingresado.
+              Debe ser <b>PL + RUC</b>.
+            </div>
+
+            <div className={styles.formGrid}>
+              <label>
+  <span>Proveedor</span>
+
+  <ProveedorPicker
+    value={
+      cabecera.CardCode
+        ? `${cabecera.CardCode} - ${cabecera.CardName || "Proveedor"}`
+        : ""
+    }
+    onChange={(nombre, proveedor) => {
+      setCab("CardCode", proveedor?.CodigoSAP || `PL${proveedor?.IdProveedor || ""}`);
+      setCab("CardName", proveedor?.NombreProveedor || nombre || "");
+    }}
+    title="Seleccionar proveedor"
+  />
+</label>
+
+              <label>
+                <span>Fecha documento</span>
+                <input
+                  type="date"
+                  value={cabecera.DocDate}
+                  onChange={(e) => setCab("DocDate", e.target.value)}
+                />
+              </label>
+
+              <label>
+                <span>Fecha vencimiento</span>
+                <input
+                  type="date"
+                  value={cabecera.DocDueDate}
+                  onChange={(e) => setCab("DocDueDate", e.target.value)}
+                />
+              </label>
+
+              <label>
+                <span>Establecimiento</span>
+                <input
+                  value={cabecera.Serie}
+                  onChange={(e) => setCab("Serie", e.target.value)}
+                  placeholder="001"
+                />
+              </label>
+
+              <label>
+                <span>Punto emisión</span>
+                <input
+                  value={cabecera.PtoEmi}
+                  onChange={(e) => setCab("PtoEmi", e.target.value)}
+                  placeholder="001"
+                />
+              </label>
+
+              <label>
+                <span>Secuencial</span>
+                <input
+                  value={cabecera.Secuencial}
+                  onChange={(e) => setCab("Secuencial", e.target.value)}
+                  placeholder="000001383"
+                />
+              </label>
+
+              <label>
+                <span>Número referencia</span>
+                <input
+                  value={construirReferencia(cabecera.Serie, cabecera.PtoEmi, cabecera.Secuencial)}
+                  readOnly
+                  placeholder="001-001-000001383"
+                />
+              </label>
+
+              <label>
+                <span>Tipo emisión</span>
+                <input value="P" disabled />
+              </label>
+
+              <label className={styles.gridFull}>
+                <span>Comentario</span>
+                <textarea
+                  value={cabecera.Comments}
+                  onChange={(e) => setCab("Comments", e.target.value)}
+                  required
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className={styles.section}>
+            <div className={styles.sectionHead}>
+              <h4>Detalle</h4>
+
+              <button
+                type="button"
+                className={styles.secondary}
+                onClick={addRow}
+              >
+                + Línea
+              </button>
+            </div>
+
+            <div className={styles.tableWrap}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Descripción</th>
+                    <th>Cantidad</th>
+                    <th>Precio</th>
+                    <th>Desc.</th>
+                    <th>Dato adicional</th>
+                    <th></th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {rows.map((r, i) => (
+                    <tr key={i}>
+                      <td>
+                        <input
+                          value={r.Descripcion}
+                          onChange={(e) =>
+                            updateRow(i, { Descripcion: e.target.value })
+                          }
+                          placeholder="Descripción"
+                        />
+                      </td>
+
+                      <td>
+                        <input
+                          type="number"
+                          min="1"
+                          value={r.Cantidad}
+                          onChange={(e) =>
+                            updateRow(i, { Cantidad: e.target.value })
+                          }
+                        />
+                      </td>
+
+                      <td>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={r.Precio}
+                          onChange={(e) =>
+                            updateRow(i, { Precio: e.target.value })
+                          }
+                        />
+                      </td>
+
+                      <td>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={r.Descuento}
+                          onChange={(e) =>
+                            updateRow(i, { Descuento: e.target.value })
+                          }
+                        />
+                      </td>
+
+                      <td>
+                        <input
+                          value={r.DatoAdicional}
+                          onChange={(e) =>
+                            updateRow(i, { DatoAdicional: e.target.value })
+                          }
+                          placeholder="Dato adicional"
+                        />
+                      </td>
+
+                      <td>
+                        <button
+                          type="button"
+                          className={styles.danger}
+                          onClick={() => removeRow(i)}
+                          disabled={rows.length <= 1}
+                        >
+                          ×
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div className={styles.footerTotals}>
+          <div>Subtotal: <b>${resumen.sub.toFixed(2)}</b></div>
+          <div>IVA: <b>$0.00</b></div>
+          <div>Total: <b>${resumen.sub.toFixed(2)}</b></div>
+        </div>
+
+        {msg && (
+          <div className={msg.type === "err" ? styles.alertError : styles.alertOk}>
+            {msg.text}
+          </div>
+        )}
+
+        <div className={styles.modalActions}>
+          <button
+            type="button"
+            className={styles.secondary}
+            onClick={handleCerrar}
+            disabled={sending}
+          >
+            Cancelar
+          </button>
+
+          <button
+            type="button"
+            className={styles.primary}
+            onClick={guardarBorrador}
+            disabled={sending}
+          >
+            {sending ? "Guardando..." : "Crear preliminar nota de venta"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+return (
     <div className={styles.modalOverlay} role="dialog" aria-modal="true">
       <div className={styles.modalBox}>
         <div className={styles.modalHeader}>

@@ -14,7 +14,7 @@ import {
   Truck,
   CalendarRange,
   Settings2,
-  CreditCard
+  CreditCard,
 } from "lucide-react";
 import styles from "./sidebar.module.css";
 
@@ -22,33 +22,46 @@ export default function Sidebar({ session, user, collapsed }) {
   const rolNombre = (user?.RolNombre || "").trim().toUpperCase();
   const rolId = Number(user?.RolId);
 
-  // ✅ Roles
+  const userEmail = (session?.user?.email || user?.Correo || "")
+    .trim()
+    .toLowerCase();
+
+  // Roles
   const isAdmin = rolId === 1 || rolNombre === "ADMINISTRADOR";
   const isUsuario = rolId === 3 || rolNombre === "USUARIO";
-  const isCompras = rolId === 6 || rolNombre === "COMPRAS";
-  const isData = rolId === 5 || rolNombre === "DATA";
   const isContabilidad = rolId === 4 || rolNombre === "CONTABILIDAD";
+  const isData = rolId === 5 || rolNombre === "DATA";
+  const isCompras = rolId === 6 || rolNombre === "COMPRAS";
 
-  // ✅ FACTURAS SAP: SOLO Admin + Data
-  const canSeeFacturasSap = isAdmin || isData;
+  // Usuario especial con acceso a Órdenes de compra
+  const isBrithanny =
+    userEmail === "brithanny.ortega@biocellsmed.com";
 
-  // ✅ ADMIN GENERAL: SOLO Admin
-  const canSeeAdmin = isAdmin;
+  // Permisos
+  const canSeeDashboard = isAdmin || isCompras;
+  const canSeeNuevaSolicitud =
+    isAdmin || isUsuario || isCompras || isContabilidad;
 
-  // ✅ Aprobaciones: Admin + Jefe TI (si mantienes eso)
-  const canSeeAprobaciones = isAdmin || rolId === 2 || rolNombre === "JEFE TI";
+  const canSeeSolicitudAnticipo =
+    isAdmin || isUsuario || isCompras || isContabilidad;
 
-  // ✅ Anticipos: Admin + Compras
+  const canSeeSolicitudesMensuales =
+    isAdmin || isUsuario || isCompras || isContabilidad;
+
+  const canSeePlantillasMensuales = isAdmin || isCompras;
+  const canSeeTarjetasCredito = isAdmin || isCompras;
   const canSeeAnticipos = isAdmin || isCompras;
-
-  // ✅ PROVEEDORES: SOLO Admin + Compras
+  const canSeeReportes = isAdmin || isCompras;
+  const canSeeSolicitudes = isAdmin || isCompras;
+  const canSeePreordenes = isAdmin || isCompras;
   const canSeeProveedores = isAdmin || isCompras;
 
-  const dashboardHref = isData
-    ? "/facturas-sap"
-    : isContabilidad
-    ? "/ordenes"
-    : "/dashboard";
+  const canSeeOrdenes =
+    isAdmin || isCompras || isContabilidad || isBrithanny;
+
+  const canSeeAprobaciones = isAdmin;
+  const canSeeFacturasSap = isAdmin || isData;
+  const canSeeAdminGeneral = isAdmin;
 
   return (
     <aside
@@ -56,7 +69,6 @@ export default function Sidebar({ session, user, collapsed }) {
         collapsed ? styles.sidebarCollapsed : ""
       }`}
     >
-      {/* BRAND */}
       <div className={styles.topBrand}>
         <div className={styles.brandDot}>BIO</div>
         <div className={styles.brandText}>
@@ -65,111 +77,83 @@ export default function Sidebar({ session, user, collapsed }) {
       </div>
 
       <nav className={styles.nav}>
-        {/* ✅ DATA: SOLO FACTURAS SAP */}
-        {isData ? (
+        {/* DATA: solo Facturas SAP */}
+        {isData && !isAdmin ? (
           <>
             <div className={styles.sectionLabel}>Finanzas</div>
+
             <a href="/facturas-sap" className={styles.item}>
               <FileText size={18} />
               <span>Facturas SAP</span>
             </a>
           </>
-        ) : isContabilidad ? (
-          /* ✅ CONTABILIDAD: SOLO ÓRDENES DE COMPRA */
-          <>
-            <div className={styles.sectionLabel}>Compras</div>
-            <a href="/ordenes" className={styles.item}>
-              <FileText size={18} />
-              <span>Órdenes de compra</span>
-            </a>
-          </>
-        ) : isUsuario ? (
-          /* ✅ USUARIO (RolId 3): SOLO Dashboard + Nueva solicitud + Solicitudes */
-          <>
-  <div className={styles.sectionLabel}>General</div>
-  <a href="/dashboard" className={styles.item}>
-    <LayoutDashboard size={18} />
-    <span>Dashboard</span>
-  </a>
-
-  <div className={styles.sectionLabel}>Compras</div>
-  <a href="/solicitudes/new" className={styles.item}>
-    <ShoppingCart size={18} />
-    <span>Nueva solicitud</span>
-  </a>
-
-  <a href="/solicitudes-mensuales" className={styles.item}>
-    <CalendarRange size={18} />
-    <span>Solicitudes mensuales</span>
-  </a>
-
-  <a href="/solicitudes" className={styles.item}>
-    <ListChecks size={18} />
-    <span>Solicitudes</span>
-  </a>
-</>
         ) : (
-          /* ✅ RESTO (Admin, Compras, Jefe TI, etc.) */
           <>
-            <div className={styles.sectionLabel}>General</div>
+            {/* GENERAL */}
+            {canSeeDashboard && (
+              <>
+                <div className={styles.sectionLabel}>General</div>
 
-            <a href={dashboardHref} className={styles.item}>
-              <LayoutDashboard size={18} />
-              <span>Dashboard</span>
-            </a>
+                <a href="/dashboard" className={styles.item}>
+                  <LayoutDashboard size={18} />
+                  <span>Dashboard</span>
+                </a>
+              </>
+            )}
 
-            <div className={styles.sectionLabel}>Compras</div>
+            {/* COMPRAS */}
+            {(canSeeNuevaSolicitud ||
+              canSeeSolicitudAnticipo ||
+              canSeeSolicitudesMensuales ||
+              canSeePlantillasMensuales ||
+              canSeeSolicitudes ||
+              canSeePreordenes ||
+              canSeeProveedores ||
+              canSeeOrdenes) && (
+              <div className={styles.sectionLabel}>Compras</div>
+            )}
 
-            <a href="/solicitudes/new" className={styles.item}>
-              <ShoppingCart size={18} />
-              <span>Nueva solicitud</span>
-            </a>
-            <a href="/anticipos/new" className={styles.item}>
-            <FileText size={18} />
-            <span>Solicitud de anticipo</span>
-          </a>
-            <a href="/solicitudes-mensuales" className={styles.item}>
-  <CalendarRange size={18} />
-  <span>Solicitudes mensuales</span>
-</a>
-{(isAdmin || isCompras) && (
-  <a href="/plantillas-mensuales" className={styles.item}>
-    <Settings2 size={18} />
-    <span>Plantillas mensuales</span>
-  </a>
-  
-)}
-{(isAdmin || isCompras) && (
-  <>
-    <div className={styles.sectionLabel}>Finanzas</div>
+            {canSeeNuevaSolicitud && (
+              <a href="/solicitudes/new" className={styles.item}>
+                <ShoppingCart size={18} />
+                <span>Nueva solicitud</span>
+              </a>
+            )}
 
-    <a href="/tarjetas-credito" className={styles.item}>
-      <CreditCard size={18} />
-      <span>Tarjetas de crédito</span>
-    </a>
-  </>
-)}
-{canSeeAnticipos && (
-  <a href="/anticipos" className={styles.item}>
-    <FileText size={18} />
-    <span>Anticipos</span>
-  </a>
-)}
-{(isAdmin || isCompras) && (
-  <a href="/reportes" className={styles.item}>
-    <FileText size={18} />
-    <span>Reportes</span>
-  </a>
-)}
-            <a href="/solicitudes" className={styles.item}>
-              <ListChecks size={18} />
-              <span>Solicitudes</span>
-            </a>
+            {canSeeSolicitudAnticipo && (
+              <a href="/anticipos/new" className={styles.item}>
+                <FileText size={18} />
+                <span>Solicitud de anticipo</span>
+              </a>
+            )}
 
-            <a href="/preordenes" className={styles.item}>
-              <ClipboardList size={18} />
-              <span>Pre-órdenes de compra</span>
-            </a>
+            {canSeeSolicitudesMensuales && (
+              <a href="/solicitudes-mensuales" className={styles.item}>
+                <CalendarRange size={18} />
+                <span>Solicitudes mensuales</span>
+              </a>
+            )}
+
+            {canSeePlantillasMensuales && (
+              <a href="/plantillas-mensuales" className={styles.item}>
+                <Settings2 size={18} />
+                <span>Plantillas mensuales</span>
+              </a>
+            )}
+
+            {canSeeSolicitudes && (
+              <a href="/solicitudes" className={styles.item}>
+                <ListChecks size={18} />
+                <span>Solicitudes</span>
+              </a>
+            )}
+
+            {canSeePreordenes && (
+              <a href="/preordenes" className={styles.item}>
+                <ClipboardList size={18} />
+                <span>Pre-órdenes de compra</span>
+              </a>
+            )}
 
             {canSeeProveedores && (
               <a href="/proveedores" className={styles.item}>
@@ -178,12 +162,50 @@ export default function Sidebar({ session, user, collapsed }) {
               </a>
             )}
 
-            
-            <a href="/ordenes" className={styles.item}>
-              <FileText size={18} />
-              <span>Órdenes de compra</span>
-            </a>
+            {canSeeOrdenes && (
+              <a href="/ordenes" className={styles.item}>
+                <FileText size={18} />
+                <span>Órdenes de compra</span>
+              </a>
+            )}
 
+            {/* FINANZAS */}
+            {(canSeeTarjetasCredito ||
+              canSeeAnticipos ||
+              canSeeReportes ||
+              canSeeFacturasSap) && (
+              <div className={styles.sectionLabel}>Finanzas</div>
+            )}
+
+            {canSeeTarjetasCredito && (
+              <a href="/tarjetas-credito" className={styles.item}>
+                <CreditCard size={18} />
+                <span>Tarjetas de crédito</span>
+              </a>
+            )}
+
+            {canSeeAnticipos && (
+              <a href="/anticipos" className={styles.item}>
+                <FileText size={18} />
+                <span>Anticipos</span>
+              </a>
+            )}
+
+            {canSeeReportes && (
+              <a href="/reportes" className={styles.item}>
+                <FileText size={18} />
+                <span>Reportes</span>
+              </a>
+            )}
+
+            {canSeeFacturasSap && (
+              <a href="/facturas-sap" className={styles.item}>
+                <FileText size={18} />
+                <span>Facturas SAP</span>
+              </a>
+            )}
+
+            {/* APROBACIONES */}
             {canSeeAprobaciones && (
               <>
                 <div className={styles.sectionLabel}>
@@ -203,17 +225,8 @@ export default function Sidebar({ session, user, collapsed }) {
               </>
             )}
 
-            {canSeeFacturasSap && (
-              <>
-                <div className={styles.sectionLabel}>Finanzas</div>
-                <a href="/facturas-sap" className={styles.item}>
-                  <FileText size={18} />
-                  <span>Facturas SAP</span>
-                </a>
-              </>
-            )}
-
-            {canSeeAdmin && (
+            {/* ADMINISTRACIÓN */}
+            {canSeeAdminGeneral && (
               <>
                 <div className={styles.sectionLabel}>Administración</div>
 
@@ -226,9 +239,11 @@ export default function Sidebar({ session, user, collapsed }) {
                   <a href="/admin/usuarios" className={styles.subitem}>
                     Usuarios
                   </a>
+
                   <a href="/admin/roles" className={styles.subitem}>
                     Roles
                   </a>
+
                   <a href="/admin/departamentos" className={styles.subitem}>
                     Departamentos
                   </a>
@@ -239,12 +254,12 @@ export default function Sidebar({ session, user, collapsed }) {
         )}
       </nav>
 
-      {/* 👤 Usuario + logout */}
       <div className={styles.bottomUser}>
         <div className={styles.userInfo}>
           <div className={styles.userName}>{session?.user?.name ?? ""}</div>
           <div className={styles.userMail}>{session?.user?.email ?? ""}</div>
         </div>
+
         <button
           className={styles.userLogout}
           type="button"

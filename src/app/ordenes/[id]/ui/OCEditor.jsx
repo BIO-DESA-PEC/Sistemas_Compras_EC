@@ -19,7 +19,8 @@ import {
   persistFacturaSnapshotOC,
   getProveedorSapByCardCode,
   validarFacturaDuplicadaOC,
-  createOCDirecta
+  createOCDirecta,
+  crearDraftNotaVentaOC
 } from "@/app/lib/backend";
 import { useSession } from "next-auth/react";
 import ProveedorInfoModal from "@/components/ProveedorInfoModal";
@@ -785,6 +786,66 @@ const puedeFacturar =
     (!ocAprob?.existe) ||
     (ocAprob?.estado === "APROBADA")
   );
+
+  const mandarAFacturarNotaVenta = useCallback(async () => {
+  try {
+    const st = await getOCApprovalStatus(oc.IdOC);
+
+    if (st?.existe && st.estado !== "APROBADA") {
+      alert("Para facturar, la OC debe estar aprobada.");
+      return;
+    }
+  } catch {}
+
+  setFactTipo("NOTA_VENTA");
+  setFactMode("NOTA_VENTA");
+
+  setPreviewData({
+    IdOC: oc.IdOC,
+    OcId: oc.IdOC,
+    DocEntry: null,
+    TipoOC: "SERVICIO",
+    EsNotaVenta: true,
+    Cabecera: {
+      CardCode: "",
+      CardName: "",
+      DocDate: "",
+      DocDueDate: "",
+      Serie: "",
+      PtoEmi: "",
+      Secuencial: "",
+      NumAtCard: "",
+      NroAutorizacion: "",
+      FechaAutorizacion: "",
+      TipoDoc: "02",
+      TipoEmision: "P",
+      FormaPago: "20",
+      TipoPago: "01",
+      Comments: "BORRADOR NOTA DE VENTA",
+      TotalDiscount: 0,
+      DiscountPercent: 0,
+    },
+    Lineas: [
+      {
+        ItemDescription: "",
+        Quantity: 1,
+        UnitPrice: 0,
+        DiscountPercent: 0,
+        TaxCode: "",
+        AccountCode: "",
+        DatoAdicional: "",
+        CostingCode: "",
+        CostingCode2: "",
+        CostingCode3: "",
+        IdSustentoTributario: "01",
+        ConceptoGasto: "",
+      },
+    ],
+  });
+
+  setPreviewOpen(true);
+}, [oc.IdOC]);
+
   return (
     <div className={`${styles.ocTheme} ${styles.card}`}>
       <div className={styles.topSection}>
@@ -905,14 +966,24 @@ const puedeFacturar =
             </button>
 
             {puedeFacturar && (
-              <button
-                className={styles.ok}
-                onClick={() => mandarAFacturar("NORMAL")}
-                title={tipoOC ? `Tipo: ${tipoOC}` : "Tipo no definido"}
-              >
-                Facturar
-              </button>
-            )}
+  <>
+    <button
+      className={styles.ok}
+      onClick={() => mandarAFacturar("NORMAL")}
+      title="Buscar factura/preliminar existente en SAP"
+    >
+      Facturar
+    </button>
+
+    <button
+      className={styles.secondary}
+      onClick={mandarAFacturarNotaVenta}
+      title="Crear borrador desde nota de venta"
+    >
+      Facturar nota de venta
+    </button>
+  </>
+)}
           </div>
         </div>
       </div>
