@@ -50,8 +50,8 @@ export default function Sidebar({ session, user, collapsed }) {
 
   const canSeePlantillasMensuales = isAdmin || isCompras;
   const canSeeTarjetasCredito = isAdmin || isCompras;
-  const canSeeAnticipos = isAdmin || isCompras;
-  const canSeeReportes = isAdmin || isCompras;
+  const canSeeAnticipos = isAdmin || isCompras|| isContabilidad;;
+  const canSeeReportes = isAdmin || isCompras|| isContabilidad;;
   const canSeeSolicitudes = isAdmin || isCompras;
   const canSeePreordenes = isAdmin || isCompras;
   const canSeeProveedores = isAdmin || isCompras;
