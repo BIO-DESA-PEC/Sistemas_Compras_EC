@@ -846,13 +846,13 @@ function construirReferencia(serie, ptoEmi, secuencial) {
     Lineas: rowsActuales.map((r) => {
     const cantidad = Math.max(1, n2(r.Cantidad));
     const precioUnitario = n2(r.Precio);
-    const precioTotalLinea = +(cantidad * precioUnitario).toFixed(2);
 
     return {
       Descripcion: String(r.Descripcion || "SERVICIO").trim(),
-      Cantidad: 1,
-      Precio: precioTotalLinea,
+      Cantidad: cantidad,
+      Precio: precioUnitario,
       Descuento: n2(r.Descuento),
+      TaxCode: "IVA_0",
       DatoAdicional: String(r.DatoAdicional || "").trim(),
     };
   }),
