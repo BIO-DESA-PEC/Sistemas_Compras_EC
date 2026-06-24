@@ -5,11 +5,15 @@ import { Eye, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
 import AnticipoFacturarButton from "./AnticipoFacturarButton";
 import styles from "./anticipos.module.css";
 
-function isAdminCompras(user) {
+function puedeVerTodosAnticipos(user) {
   const r = (user?.RolNombre || "").trim().toUpperCase();
-  return r === "ADMINISTRADOR" || r === "COMPRAS";
-}
 
+  return (
+    r === "ADMINISTRADOR" ||
+    r === "COMPRAS" ||
+    r === "CONTABILIDAD"
+  );
+}
 async function fetchAnticipos({ userId, scope }) {
   const base = process.env.NEXT_PUBLIC_BACKEND_URL;
   const url = new URL(`${base}/api/anticipos`);
@@ -62,8 +66,8 @@ export default async function AnticiposPage({ searchParams }) {
   const user = await getUserByEmail(session.user.email);
   if (!user) redirect("/");
 
-  const adminCompras = isAdminCompras(user);
-  const scope = adminCompras ? "all" : "mine";
+  const puedeVerTodos = puedeVerTodosAnticipos(user);
+  const scope = puedeVerTodos ? "all" : "mine";
 
   const data = await fetchAnticipos({
     userId: user.IdUsuario,
@@ -85,7 +89,7 @@ export default async function AnticiposPage({ searchParams }) {
       <div className={styles.header}>
         <div>
           <h1 className={styles.title}>
-            {adminCompras ? "Anticipos" : "Mis anticipos"}
+            {puedeVerTodos ? "Anticipos" : "Mis anticipos"}
           </h1>
           <p className={styles.subtitle}>
             Gestión y seguimiento de solicitudes de anticipo.
@@ -114,7 +118,7 @@ export default async function AnticiposPage({ searchParams }) {
                 <thead>
                   <tr>
                     <th>Código</th>
-                    {adminCompras && <th>Solicitante</th>}
+                    {puedeVerTodos && <th>Solicitante</th>}
                     <th>Fecha</th>
                     <th>Monto</th>
                     <th>Beneficiario</th>
@@ -137,7 +141,7 @@ export default async function AnticiposPage({ searchParams }) {
                           </span>
                         </td>
 
-                        {adminCompras && (
+                        {puedeVerTodos && (
                           <td>
                             <div className={styles.userName}>
                               {a.SolicitanteNombre || "—"}
@@ -176,7 +180,7 @@ export default async function AnticiposPage({ searchParams }) {
                               <Eye size={17} />
                             </ActionButton>
 
-                            {adminCompras && estado !== "ANULADA" && (
+                            {puedeVerTodos && estado !== "ANULADA" && (
                               <ActionButton
                                 href={`/anticipos/${a.IdAnticipo}/estado`}
                                 title="Cambiar estado"
@@ -186,7 +190,7 @@ export default async function AnticiposPage({ searchParams }) {
                               </ActionButton>
                             )}
 
-                            {adminCompras && estado === "PAGADO" && (
+                            {puedeVerTodos && estado === "PAGADO" && (
                             <AnticipoFacturarButton
                                 idAnticipo={a.IdAnticipo}
                                 idOC={a.IdOC}
