@@ -28,6 +28,7 @@ export default function Sidebar({ session, user, collapsed }) {
 
   // Roles
   const isAdmin = rolId === 1 || rolNombre === "ADMINISTRADOR";
+  const isJefeTI = rolId === 2 || rolNombre === "JEFE TI";
   const isUsuario = rolId === 3 || rolNombre === "USUARIO";
   const isContabilidad = rolId === 4 || rolNombre === "CONTABILIDAD";
   const isData = rolId === 5 || rolNombre === "DATA";
@@ -38,15 +39,14 @@ export default function Sidebar({ session, user, collapsed }) {
     userEmail === "brithanny.ortega@biocellsmed.com";
 
   // Permisos
-  const canSeeDashboard = isAdmin || isCompras;
   const canSeeNuevaSolicitud =
-    isAdmin || isUsuario || isCompras || isContabilidad;
+  isAdmin || isUsuario || isJefeTI || isCompras || isContabilidad;
 
   const canSeeSolicitudAnticipo =
-    isAdmin || isUsuario || isCompras || isContabilidad;
+  isAdmin || isUsuario || isJefeTI || isCompras || isContabilidad;
 
   const canSeeSolicitudesMensuales =
-    isAdmin || isUsuario || isCompras || isContabilidad;
+  isAdmin || isUsuario || isJefeTI || isCompras || isContabilidad;
 
   const canSeePlantillasMensuales = isAdmin || isCompras;
   const canSeeTarjetasCredito = isAdmin || isCompras;
