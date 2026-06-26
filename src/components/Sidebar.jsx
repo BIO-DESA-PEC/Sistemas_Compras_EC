@@ -39,6 +39,8 @@ export default function Sidebar({ session, user, collapsed }) {
     userEmail === "brithanny.ortega@biocellsmed.com";
 
   // Permisos
+  const canSeeDashboard = isAdmin || isCompras;
+  
   const canSeeNuevaSolicitud =
   isAdmin || isUsuario || isJefeTI || isCompras || isContabilidad;
 
