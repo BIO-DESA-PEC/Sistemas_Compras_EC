@@ -37,33 +37,81 @@ export default function Sidebar({ session, user, collapsed }) {
   // Usuario especial con acceso a Órdenes de compra
   const isBrithanny =
     userEmail === "brithanny.ortega@biocellsmed.com";
-
+  // Usuario especial Francisco:
+// conserva los permisos de su rol y además obtiene los permisos de un usuario normal.
+  const isFrancisco =
+    userEmail === "francisco.ruiz@biocellsmed.com";
   // Permisos
-  const canSeeDashboard = isAdmin || isCompras;
-  
-  const canSeeNuevaSolicitud =
-  isAdmin || isUsuario || isJefeTI || isCompras || isContabilidad;
+const canSeeDashboard = isAdmin || isCompras;
 
-  const canSeeSolicitudAnticipo =
-  isAdmin || isUsuario || isJefeTI || isCompras || isContabilidad;
+const canSeeNuevaSolicitud =
+  isAdmin ||
+  isUsuario ||
+  isJefeTI ||
+  isCompras ||
+  isContabilidad ||
+  isFrancisco;
 
-  const canSeeSolicitudesMensuales =
-  isAdmin || isUsuario || isJefeTI || isCompras || isContabilidad;
+const canSeeSolicitudAnticipo =
+  isAdmin ||
+  isUsuario ||
+  isJefeTI ||
+  isCompras ||
+  isContabilidad ||
+  isFrancisco;
 
-  const canSeePlantillasMensuales = isAdmin || isCompras;
-  const canSeeTarjetasCredito = isAdmin || isCompras;
-  const canSeeAnticipos = isAdmin || isCompras|| isContabilidad;;
-  const canSeeReportes = isAdmin || isCompras|| isContabilidad;;
-  const canSeeSolicitudes = isAdmin || isCompras;
-  const canSeePreordenes = isAdmin || isCompras;
-  const canSeeProveedores = isAdmin || isCompras;
+const canSeeSolicitudesMensuales =
+  isAdmin ||
+  isUsuario ||
+  isJefeTI ||
+  isCompras ||
+  isContabilidad ||
+  isFrancisco;
 
-  const canSeeOrdenes =
-    isAdmin || isCompras || isContabilidad || isBrithanny;
+const canSeePlantillasMensuales = isAdmin || isCompras;
 
-  const canSeeAprobaciones = isAdmin;
-  const canSeeFacturasSap = isAdmin || isData;
-  const canSeeAdminGeneral = isAdmin;
+const canSeeTarjetasCredito = isAdmin || isCompras;
+
+const canSeeAnticipos =
+  isAdmin ||
+  isCompras ||
+  isContabilidad;
+
+const canSeeReportes =
+  isAdmin ||
+  isCompras ||
+  isContabilidad;
+
+const canSeeSolicitudes =
+  isAdmin ||
+  isCompras;
+
+const canSeePreordenes =
+  isAdmin ||
+  isCompras;
+
+const canSeeProveedores =
+  isAdmin ||
+  isCompras;
+
+const canSeeOrdenes =
+  isAdmin ||
+  isCompras ||
+  isContabilidad ||
+  isBrithanny;
+
+// Si el usuario tiene rol JEFE TI podrá ver Aprobaciones.
+// Francisco también las verá únicamente cuando su rol sea JEFE TI.
+const canSeeAprobaciones =
+  isAdmin ||
+  isJefeTI;
+
+const canSeeFacturasSap =
+  isAdmin ||
+  isData;
+
+const canSeeAdminGeneral =
+  isAdmin;
 
   return (
     <aside
