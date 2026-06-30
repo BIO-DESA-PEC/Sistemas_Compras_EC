@@ -26,7 +26,6 @@ export default function Sidebar({ session, user, collapsed }) {
     .trim()
     .toLowerCase();
 
-  // Roles
   const isAdmin = rolId === 1 || rolNombre === "ADMINISTRADOR";
   const isJefeTI = rolId === 2 || rolNombre === "JEFE TI";
   const isUsuario = rolId === 3 || rolNombre === "USUARIO";
@@ -34,84 +33,33 @@ export default function Sidebar({ session, user, collapsed }) {
   const isData = rolId === 5 || rolNombre === "DATA";
   const isCompras = rolId === 6 || rolNombre === "COMPRAS";
 
-  // Usuario especial con acceso a Órdenes de compra
-  const isBrithanny =
-    userEmail === "brithanny.ortega@biocellsmed.com";
-  // Usuario especial Francisco:
-// conserva los permisos de su rol y además obtiene los permisos de un usuario normal.
-  const isFrancisco =
-    userEmail === "francisco.ruiz@biocellsmed.com";
-  // Permisos
-const canSeeDashboard = isAdmin || isCompras;
+  const isBrithanny = userEmail === "brithanny.ortega@biocellsmed.com";
 
-const canSeeNuevaSolicitud =
-  isAdmin ||
-  isUsuario ||
-  isJefeTI ||
-  isCompras ||
-  isContabilidad ||
-  isFrancisco;
+  const canSeeDashboard = isAdmin || isCompras;
 
-const canSeeSolicitudAnticipo =
-  isAdmin ||
-  isUsuario ||
-  isJefeTI ||
-  isCompras ||
-  isContabilidad ||
-  isFrancisco;
+  const canSeeNuevaSolicitud =
+    isAdmin || isUsuario || isJefeTI || isCompras || isContabilidad || isData;
 
-const canSeeSolicitudesMensuales =
-  isAdmin ||
-  isUsuario ||
-  isJefeTI ||
-  isCompras ||
-  isContabilidad ||
-  isFrancisco;
+  const canSeeSolicitudAnticipo =
+    isAdmin || isUsuario || isJefeTI || isCompras || isContabilidad || isData;
 
-const canSeePlantillasMensuales = isAdmin || isCompras;
+  const canSeeSolicitudesMensuales =
+    isAdmin || isUsuario || isJefeTI || isCompras || isContabilidad || isData;
 
-const canSeeTarjetasCredito = isAdmin || isCompras;
+  const canSeePlantillasMensuales = isAdmin || isCompras;
+  const canSeeTarjetasCredito = isAdmin || isCompras;
+  const canSeeAnticipos = isAdmin || isCompras || isContabilidad;
+  const canSeeReportes = isAdmin || isCompras || isContabilidad;
+  const canSeeSolicitudes = isAdmin || isCompras;
+  const canSeePreordenes = isAdmin || isCompras;
+  const canSeeProveedores = isAdmin || isCompras;
 
-const canSeeAnticipos =
-  isAdmin ||
-  isCompras ||
-  isContabilidad;
+  const canSeeOrdenes =
+    isAdmin || isCompras || isContabilidad || isBrithanny;
 
-const canSeeReportes =
-  isAdmin ||
-  isCompras ||
-  isContabilidad;
-
-const canSeeSolicitudes =
-  isAdmin ||
-  isCompras;
-
-const canSeePreordenes =
-  isAdmin ||
-  isCompras;
-
-const canSeeProveedores =
-  isAdmin ||
-  isCompras;
-
-const canSeeOrdenes =
-  isAdmin ||
-  isCompras ||
-  isContabilidad ||
-  isBrithanny;
-
-// Si el usuario tiene rol JEFE TI podrá ver Aprobaciones.
-// Francisco también las verá únicamente cuando su rol sea JEFE TI.
-const canSeeAprobaciones =
-  isAdmin ||
-  isJefeTI;
-
-const canSeeFacturasSap =
-  isAdmin ||
-  isData;
-
-const canSeeAdminGeneral =
-  isAdmin;
+  const canSeeAprobaciones = isAdmin || isJefeTI;
+  const canSeeFacturasSap = isAdmin || isData;
+  const canSeeAdminGeneral = isAdmin;
 
   return (
     <aside
@@ -127,179 +75,157 @@ const canSeeAdminGeneral =
       </div>
 
       <nav className={styles.nav}>
-        {/* DATA: solo Facturas SAP */}
-        {isData && !isAdmin ? (
+        {canSeeDashboard && (
           <>
-            <div className={styles.sectionLabel}>Finanzas</div>
-
-            <a href="/facturas-sap" className={styles.item}>
-              <FileText size={18} />
-              <span>Facturas SAP</span>
+            <div className={styles.sectionLabel}>General</div>
+            <a href="/dashboard" className={styles.item}>
+              <LayoutDashboard size={18} />
+              <span>Dashboard</span>
             </a>
           </>
-        ) : (
+        )}
+
+        {(canSeeNuevaSolicitud ||
+          canSeeSolicitudAnticipo ||
+          canSeeSolicitudesMensuales ||
+          canSeePlantillasMensuales ||
+          canSeeSolicitudes ||
+          canSeePreordenes ||
+          canSeeProveedores ||
+          canSeeOrdenes) && (
+          <div className={styles.sectionLabel}>Compras</div>
+        )}
+
+        {canSeeNuevaSolicitud && (
+          <a href="/solicitudes/new" className={styles.item}>
+            <ShoppingCart size={18} />
+            <span>Nueva solicitud</span>
+          </a>
+        )}
+
+        {canSeeSolicitudAnticipo && (
+          <a href="/anticipos/new" className={styles.item}>
+            <FileText size={18} />
+            <span>Solicitud de anticipo</span>
+          </a>
+        )}
+
+        {canSeeSolicitudesMensuales && (
+          <a href="/solicitudes-mensuales" className={styles.item}>
+            <CalendarRange size={18} />
+            <span>Solicitudes mensuales</span>
+          </a>
+        )}
+
+        {canSeePlantillasMensuales && (
+          <a href="/plantillas-mensuales" className={styles.item}>
+            <Settings2 size={18} />
+            <span>Plantillas mensuales</span>
+          </a>
+        )}
+
+        {canSeeSolicitudes && (
+          <a href="/solicitudes" className={styles.item}>
+            <ListChecks size={18} />
+            <span>Solicitudes</span>
+          </a>
+        )}
+
+        {canSeePreordenes && (
+          <a href="/preordenes" className={styles.item}>
+            <ClipboardList size={18} />
+            <span>Pre-órdenes de compra</span>
+          </a>
+        )}
+
+        {canSeeProveedores && (
+          <a href="/proveedores" className={styles.item}>
+            <Truck size={18} />
+            <span>Proveedores</span>
+          </a>
+        )}
+
+        {canSeeOrdenes && (
+          <a href="/ordenes" className={styles.item}>
+            <FileText size={18} />
+            <span>Órdenes de compra</span>
+          </a>
+        )}
+
+        {(canSeeTarjetasCredito ||
+          canSeeAnticipos ||
+          canSeeReportes ||
+          canSeeFacturasSap) && (
+          <div className={styles.sectionLabel}>Finanzas</div>
+        )}
+
+        {canSeeTarjetasCredito && (
+          <a href="/tarjetas-credito" className={styles.item}>
+            <CreditCard size={18} />
+            <span>Tarjetas de crédito</span>
+          </a>
+        )}
+
+        {canSeeAnticipos && (
+          <a href="/anticipos" className={styles.item}>
+            <FileText size={18} />
+            <span>Anticipos</span>
+          </a>
+        )}
+
+        {canSeeReportes && (
+          <a href="/reportes" className={styles.item}>
+            <FileText size={18} />
+            <span>Reportes</span>
+          </a>
+        )}
+
+        {canSeeFacturasSap && (
+          <a href="/facturas-sap" className={styles.item}>
+            <FileText size={18} />
+            <span>Facturas SAP</span>
+          </a>
+        )}
+
+        {canSeeAprobaciones && (
           <>
-            {/* GENERAL */}
-            {canSeeDashboard && (
-              <>
-                <div className={styles.sectionLabel}>General</div>
+            <div className={styles.sectionLabel}>Control y aprobaciones</div>
 
-                <a href="/dashboard" className={styles.item}>
-                  <LayoutDashboard size={18} />
-                  <span>Dashboard</span>
-                </a>
-              </>
-            )}
+            <a href="/aprobaciones" className={styles.item}>
+              <CheckSquare size={18} />
+              <span>Aprobaciones</span>
+            </a>
 
-            {/* COMPRAS */}
-            {(canSeeNuevaSolicitud ||
-              canSeeSolicitudAnticipo ||
-              canSeeSolicitudesMensuales ||
-              canSeePlantillasMensuales ||
-              canSeeSolicitudes ||
-              canSeePreordenes ||
-              canSeeProveedores ||
-              canSeeOrdenes) && (
-              <div className={styles.sectionLabel}>Compras</div>
-            )}
-
-            {canSeeNuevaSolicitud && (
-              <a href="/solicitudes/new" className={styles.item}>
-                <ShoppingCart size={18} />
-                <span>Nueva solicitud</span>
+            <div className={styles.submenu}>
+              <a href="/aprobaciones/solicitudes" className={styles.subitem}>
+                Solicitudes
               </a>
-            )}
+            </div>
+          </>
+        )}
 
-            {canSeeSolicitudAnticipo && (
-              <a href="/anticipos/new" className={styles.item}>
-                <FileText size={18} />
-                <span>Solicitud de anticipo</span>
+        {canSeeAdminGeneral && (
+          <>
+            <div className={styles.sectionLabel}>Administración</div>
+
+            <a href="/admin" className={styles.item}>
+              <ShieldCheck size={18} />
+              <span>Administración general</span>
+            </a>
+
+            <div className={styles.submenu}>
+              <a href="/admin/usuarios" className={styles.subitem}>
+                Usuarios
               </a>
-            )}
 
-            {canSeeSolicitudesMensuales && (
-              <a href="/solicitudes-mensuales" className={styles.item}>
-                <CalendarRange size={18} />
-                <span>Solicitudes mensuales</span>
+              <a href="/admin/roles" className={styles.subitem}>
+                Roles
               </a>
-            )}
 
-            {canSeePlantillasMensuales && (
-              <a href="/plantillas-mensuales" className={styles.item}>
-                <Settings2 size={18} />
-                <span>Plantillas mensuales</span>
+              <a href="/admin/departamentos" className={styles.subitem}>
+                Departamentos
               </a>
-            )}
-
-            {canSeeSolicitudes && (
-              <a href="/solicitudes" className={styles.item}>
-                <ListChecks size={18} />
-                <span>Solicitudes</span>
-              </a>
-            )}
-
-            {canSeePreordenes && (
-              <a href="/preordenes" className={styles.item}>
-                <ClipboardList size={18} />
-                <span>Pre-órdenes de compra</span>
-              </a>
-            )}
-
-            {canSeeProveedores && (
-              <a href="/proveedores" className={styles.item}>
-                <Truck size={18} />
-                <span>Proveedores</span>
-              </a>
-            )}
-
-            {canSeeOrdenes && (
-              <a href="/ordenes" className={styles.item}>
-                <FileText size={18} />
-                <span>Órdenes de compra</span>
-              </a>
-            )}
-
-            {/* FINANZAS */}
-            {(canSeeTarjetasCredito ||
-              canSeeAnticipos ||
-              canSeeReportes ||
-              canSeeFacturasSap) && (
-              <div className={styles.sectionLabel}>Finanzas</div>
-            )}
-
-            {canSeeTarjetasCredito && (
-              <a href="/tarjetas-credito" className={styles.item}>
-                <CreditCard size={18} />
-                <span>Tarjetas de crédito</span>
-              </a>
-            )}
-
-            {canSeeAnticipos && (
-              <a href="/anticipos" className={styles.item}>
-                <FileText size={18} />
-                <span>Anticipos</span>
-              </a>
-            )}
-
-            {canSeeReportes && (
-              <a href="/reportes" className={styles.item}>
-                <FileText size={18} />
-                <span>Reportes</span>
-              </a>
-            )}
-
-            {canSeeFacturasSap && (
-              <a href="/facturas-sap" className={styles.item}>
-                <FileText size={18} />
-                <span>Facturas SAP</span>
-              </a>
-            )}
-
-            {/* APROBACIONES */}
-            {canSeeAprobaciones && (
-              <>
-                <div className={styles.sectionLabel}>
-                  Control y aprobaciones
-                </div>
-
-                <a href="/aprobaciones" className={styles.item}>
-                  <CheckSquare size={18} />
-                  <span>Aprobaciones</span>
-                </a>
-
-                <div className={styles.submenu}>
-                  <a href="/aprobaciones/solicitudes" className={styles.subitem}>
-                    Solicitudes
-                  </a>
-                </div>
-              </>
-            )}
-
-            {/* ADMINISTRACIÓN */}
-            {canSeeAdminGeneral && (
-              <>
-                <div className={styles.sectionLabel}>Administración</div>
-
-                <a href="/admin" className={styles.item}>
-                  <ShieldCheck size={18} />
-                  <span>Administración general</span>
-                </a>
-
-                <div className={styles.submenu}>
-                  <a href="/admin/usuarios" className={styles.subitem}>
-                    Usuarios
-                  </a>
-
-                  <a href="/admin/roles" className={styles.subitem}>
-                    Roles
-                  </a>
-
-                  <a href="/admin/departamentos" className={styles.subitem}>
-                    Departamentos
-                  </a>
-                </div>
-              </>
-            )}
+            </div>
           </>
         )}
       </nav>
