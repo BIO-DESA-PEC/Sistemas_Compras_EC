@@ -163,6 +163,7 @@ export default async function OCListPage({ searchParams }) {
                   newEstado: est,
                   page: 1,
                 })}
+                prefetch={false}
                 className={`${styles.chip} ${
                   estado === est ? styles.active : ""
                 }`}
@@ -178,6 +179,7 @@ export default async function OCListPage({ searchParams }) {
                 newHistorico: "N",
                 page: 1,
               })}
+              prefetch={false}
               className={`${styles.segment} ${
                 historico !== "Y" ? styles.segmentActive : ""
               }`}
@@ -190,6 +192,7 @@ export default async function OCListPage({ searchParams }) {
                 newHistorico: "Y",
                 page: 1,
               })}
+              prefetch={false}
               className={`${styles.segment} ${
                 historico === "Y" ? styles.segmentActive : ""
               }`}
@@ -519,6 +522,7 @@ export default async function OCListPage({ searchParams }) {
                   safePage === 1 ? styles.disabled : ""
                 }`}
                 href={safePage === 1 ? "#" : buildLink({ page: safePage - 1 })}
+                prefetch={false}
               >
                 «
               </Link>
@@ -528,6 +532,7 @@ export default async function OCListPage({ searchParams }) {
                   <Link
                     key={i}
                     href={buildLink({ page: p.n })}
+                    prefetch={false}
                     className={`${styles.pageBtn} ${
                       p.active ? styles.pageActive : ""
                     }`}
@@ -550,6 +555,7 @@ export default async function OCListPage({ searchParams }) {
                     ? "#"
                     : buildLink({ page: safePage + 1 })
                 }
+                prefetch={false}
               >
                 »
               </Link>
