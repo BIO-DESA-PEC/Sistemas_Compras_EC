@@ -147,7 +147,7 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
     aprobadorNombre: "",
     puedeFacturar: false,
   });
-
+  
   const { data: session } = useSession();
   const [user, setUser] = useState(null);
 
@@ -553,9 +553,25 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
         if (prev && prev.error) throw new Error(prev.error);
 
         if (!prev || !prev.encontrado) {
+          if (prev?.modoCrearManual) {
+            setPreviewData({
+              ...prev,
+              IdOC: oc.IdOC,
+              OcId: oc.IdOC,
+              ModoCrearManual: true,
+              EsCrearManual: true,
+              TipoOC: t,
+            });
+
+            setFacturaCabecera(prev?.Cabecera || null);
+            setFacturaDetalle(Array.isArray(prev?.Lineas) ? prev.Lineas : []);
+            setPreviewOpen(true);
+            return;
+          }
+
           alert((prev && prev.mensaje) || "No se encontró el borrador en SAP.");
           return;
-        }
+  }
 
         setPreviewData(prev);
         setFacturaCabecera(prev?.Cabecera || null);
@@ -628,6 +644,25 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
       if (prev && prev.error) throw new Error(prev.error);
 
       if (!prev || !prev.encontrado) {
+        if (prev?.modoCrearManual) {
+          setFactCardCode(prev?.Cabecera?.CardCode || card || "");
+          setFactProveedorNom(prev?.Cabecera?.CardName || provNom || "");
+
+          setPreviewData({
+            ...prev,
+            IdOC: oc.IdOC,
+            OcId: oc.IdOC,
+            ModoCrearManual: true,
+            EsCrearManual: true,
+            TipoOC: factTipo || t || oc?.Tipo || "SERVICIO",
+          });
+
+          setFacturaCabecera(prev?.Cabecera || null);
+          setFacturaDetalle(Array.isArray(prev?.Lineas) ? prev.Lineas : []);
+          setPreviewOpen(true);
+          return;
+        }
+
         alert((prev && prev.mensaje) || "No se encontró el borrador en SAP.");
         return;
       }
@@ -679,10 +714,15 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
     }
 
     // 4) Reflejar en UI
-    setFacturaCabecera(cab);
+    setFacturaCabecera({
+      ...cab,
+      DocEntry: docEntry,
+    });
     setFacturaDetalle(lineas);
 
-    alert("OC PROCESADA y factura asociada guardada correctamente.");
+    setShowUploadFactura(true);
+
+    alert("OC PROCESADA. Ahora debe subir la factura obligatoriamente.");
   } catch (e) {
     alert("Se encontró el borrador, pero hubo error al guardar: " + (e?.message || e));
   } finally {
@@ -847,7 +887,20 @@ const puedeFacturar =
 
   setPreviewOpen(true);
 }, [oc.IdOC]);
+const facturaObligatoria =
+  estado === "PROCESADA" &&
+  !!facturaCabecera &&
+  adjuntosFactura.length === 0;
 
+const handleVolver = () => {
+  if (facturaObligatoria) {
+    alert("Debe subir la factura antes de volver.");
+    openUploadFactura();
+    return;
+  }
+
+  router.back();
+};
   return (
     <div className={`${styles.ocTheme} ${styles.card}`}>
       <div className={styles.topSection}>
@@ -954,14 +1007,36 @@ const puedeFacturar =
 )}
 
             {estado === "PROCESADA" && (
-              <button
-                className={styles.primary}
-                onClick={openUploadFactura}
-                title="Subir PDF/XML de la factura a SharePoint"
-              >
-                Subir factura
-              </button>
-            )}
+  <>
+    {facturaCabecera?.DocEntry && (
+      <button
+        className={styles.secondary}
+        onClick={() => {
+          setPreviewData({
+            IdOC: ocId,
+            OcId: ocId,
+            DocEntry: facturaCabecera.DocEntry,
+            TipoOC: tipoOC || "SERVICIO",
+            EsNotaVenta: false,
+            Cabecera: facturaCabecera,
+            Lineas: facturaDetalle || [],
+            SoloComentario: true,
+          });
+          setPreviewOpen(true);
+        }}
+      >
+        Actualizar comentario
+      </button>
+    )}
+
+    <button
+      className={styles.primary}
+      onClick={openUploadFactura}
+    >
+      Subir factura
+    </button>
+  </>
+)}
 
             <button className={styles.warn} onClick={anularOC}>
               Anular
@@ -984,8 +1059,16 @@ const puedeFacturar =
     >
       Facturar nota de venta
     </button>
+    
   </>
 )}
+<button
+  type="button"
+  className={styles.secondary}
+  onClick={handleVolver}
+>
+  ← Volver
+</button>
           </div>
         </div>
       </div>
@@ -1226,7 +1309,11 @@ const puedeFacturar =
       {facturaCabecera && (
         <div className={styles.card} style={{ marginTop: 14 }}>
           <div className={styles.sectionTitle}>Factura SAP asociada</div>
-
+          {facturaObligatoria && (
+  <div className={styles.warningFactura}>
+    ⚠ Debe subir la factura antes de volver.
+  </div>
+)}
           <div className={styles.formGrid}>
             <div>
               <strong>Proveedor:</strong><br />
@@ -1583,6 +1670,16 @@ const puedeFacturar =
         rolNombre={user?.RolNombre}
         rolId={user?.RolId}
         modo="ordenes"
+      />
+      <FacturaPreviewModal
+        open={previewOpen}
+        data={previewData}
+        onClose={() => setPreviewOpen(false)}
+        onUse={handleUseDraft}
+        modo="facturas_sap"
+        rolNombre={user?.RolNombre}
+        rolId={user?.RolId}
+        ocId={oc.IdOC}
       />
       {provInfo && (
         <ProveedorInfoModal

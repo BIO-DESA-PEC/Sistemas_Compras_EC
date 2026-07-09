@@ -19,6 +19,7 @@ export default function AnticipoForm({ user }) {
   });
 
   const [loading, setLoading] = useState(false);
+  const [archivoPdf, setArchivoPdf] = useState(null);
   const [msg, setMsg] = useState("");
 
   const handleChange = (e) => {
@@ -38,27 +39,41 @@ export default function AnticipoForm({ user }) {
     setLoading(true);
 
     try {
+      const fd = new FormData();
+
+      fd.append("IdUsuario", user.IdUsuario);
+      fd.append("DepartamentoId", user.DepartamentoId || "");
+      fd.append("Fecha", form.Fecha);
+      fd.append("Monto", Number(form.Monto));
+      fd.append("Moneda", form.Moneda);
+      fd.append("BeneficiarioCheque", form.BeneficiarioCheque);
+      fd.append("CiDniRuc", form.CiDniRuc);
+      fd.append("Motivo1", form.Motivo1);
+      fd.append("Motivo2", form.Motivo2);
+      fd.append("FechaMaximaLiquidacion", form.FechaMaximaLiquidacion);
+      fd.append("Observacion", form.Observacion);
+
+      if (archivoPdf) {
+        fd.append("ArchivoPdf", archivoPdf);
+      }
+
       const res = await fetch(`${API_BASE}/api/anticipos`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          IdUsuario: user.IdUsuario,
-          DepartamentoId: user.DepartamentoId || null,
-          Fecha: form.Fecha,
-          Monto: Number(form.Monto),
-          Moneda: form.Moneda,
-          BeneficiarioCheque: form.BeneficiarioCheque,
-          CiDniRuc: form.CiDniRuc,
-          Motivo1: form.Motivo1,
-          Motivo2: form.Motivo2,
-          FechaMaximaLiquidacion: form.FechaMaximaLiquidacion,
-          Observacion: form.Observacion,
-        }),
+        body: fd,
       });
 
-      const data = await res.json();
+      const text = await res.text();
+
+      let data = {};
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error(text || "El backend no devolvió JSON.");
+      }
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Error al crear la solicitud.");
+      }
 
       if (!res.ok) {
         throw new Error(data?.error || "Error al crear la solicitud.");
@@ -77,6 +92,8 @@ export default function AnticipoForm({ user }) {
         FechaMaximaLiquidacion: "",
         Observacion: "",
       });
+
+      setArchivoPdf(null);
     } catch (err) {
       setMsg(err.message);
     } finally {
@@ -177,6 +194,31 @@ export default function AnticipoForm({ user }) {
               value={form.FechaMaximaLiquidacion}
               onChange={handleChange}
               required
+            />
+          </label>
+
+          <label className={styles.full}>
+            Documento PDF adicional
+            <input
+              type="file"
+              accept="application/pdf"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+
+                if (!file) {
+                  setArchivoPdf(null);
+                  return;
+                }
+
+                if (file.type !== "application/pdf") {
+                  setMsg("Solo se permite subir archivos PDF.");
+                  e.target.value = "";
+                  setArchivoPdf(null);
+                  return;
+                }
+
+                setArchivoPdf(file);
+              }}
             />
           </label>
 

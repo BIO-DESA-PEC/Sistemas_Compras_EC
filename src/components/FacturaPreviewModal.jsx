@@ -7,7 +7,9 @@ import {
   persistFacturaSnapshotOC,
   updateFacturaSapDraft,
   updateOCState,
-  crearDraftNotaVentaOC
+  crearDraftNotaVentaOC,
+  updateComentarioDraftOC,
+  crearBorradorManualOC
 } from '@/app/lib/backend';
 import ProveedorPicker from "@/components/SupplierSelect";
 
@@ -78,9 +80,19 @@ export default function FacturaPreviewModal({
   const [finalizado, setFinalizado] = useState(false);
   const [yaTeniaGastoAlAbrir, setYaTeniaGastoAlAbrir] = useState(false);
   const [tipoVisual, setTipoVisual] = useState('SERVICIO');
-  const readOnlyTotal = (modo === "facturas_sap") && (finalizado || yaTeniaGastoAlAbrir);
-  const isLock = (modo === 'facturas_sap') && !!lockSoloGasto && !readOnlyTotal;
   const esNotaVenta = !!data?.EsNotaVenta;
+  const [puedeCrearBorradorManual, setPuedeCrearBorradorManual] = useState(false);
+  const [payloadPendiente, setPayloadPendiente] = useState(null);
+  const soloComentario = !!data?.SoloComentario;
+
+const readOnlyTotal =
+  ((modo === "facturas_sap") && (finalizado || yaTeniaGastoAlAbrir)) ||
+  soloComentario;
+
+const isLock = (modo === "facturas_sap") && !!lockSoloGasto && !readOnlyTotal;
+  
+  
+
   /* ===== DIMENSIONES ===== */
   const [dLinea, setDLinea] = useState([]);
   const [dRegion, setDRegion] = useState([]);
@@ -126,6 +138,7 @@ function construirReferencia(serie, ptoEmi, secuencial) {
       CardName: s(c.CardName || d?.Cabecera?.CardName || ''),
       DocDate: normDate(c.DocDate),
       DocDueDate: normDate(c.DocDueDate),
+      BIO_FechaP: normDate(c.BIO_FechaP || c.U_BIO_FechaP || c.FechaPago || c.DocDueDate),
       Serie: s(c.Serie),
       PtoEmi: s(c.PtoEmi),
       Secuencial: s(c.Secuencial),
@@ -145,7 +158,8 @@ function construirReferencia(serie, ptoEmi, secuencial) {
   };
 
   const [cabecera, setCabecera] = useState(() => buildCabecera(data));
-
+  const [empleadosCompras, setEmpleadosCompras] = useState([]);
+  const [salesPersonCode, setSalesPersonCode] = useState("");
   const [descuentoTotalFactura, setDescuentoTotalFactura] = useState("");
   const [descuentoDistribuidoInfo, setDescuentoDistribuidoInfo] = useState(null);
 
@@ -156,24 +170,18 @@ function construirReferencia(serie, ptoEmi, secuencial) {
       .trim();
   }
 
-  function normalizarComentarioBase(txt = "", claseActual = "SERVICIO") {
-    const limpio = limpiarComentarioDescuento(txt)
-      .replace(/\s*\|\s*BORRADOR DE TIPO (ARTICULO|ARTÍCULO|SERVICIO)/gi, "")
-      .replace(/^BORRADOR DE TIPO (ARTICULO|ARTÍCULO|SERVICIO)\s*\|?\s*/gi, "")
-      .trim();
-
-    return limpio
-      ? `BORRADOR DE TIPO ${claseActual} | ${limpio}`
-      : `BORRADOR DE TIPO ${claseActual}`;
+  function normalizarComentarioBase(txt = "") {
+    return limpiarComentarioDescuento(txt).trim();
   }
 
-  function construirComentarioConDescuento(baseComments, monto, claseActual) {
-    const comentarioBase = normalizarComentarioBase(baseComments || "", claseActual);
+
+  function construirComentarioConDescuento(baseComments, monto) {
+    const comentario = normalizarComentarioBase(baseComments || "");
     const valor = Number(monto || 0);
 
     return valor > 0
-      ? `${comentarioBase} | Descuento total factura: $${valor.toFixed(2)}`
-      : comentarioBase;
+      ? `${comentario} | Descuento total factura: $${valor.toFixed(2)}`
+      : comentario;
   }
 
   function setComentarioConDescuento(valor) {
@@ -283,26 +291,23 @@ function construirReferencia(serie, ptoEmi, secuencial) {
   }), [cabecera, data?.DocEntry]);
 
   const setCab = (k, v) => {
-  if (isLock || readOnlyTotal) return;
+    if (soloComentario && k !== "Comments") return;
+    if (isLock || (readOnlyTotal && k !== "Comments")) return;
 
-  setCabecera((p) => {
-    const next = { ...p, [k]: v };
+    setCabecera((p) => {
+      const next = { ...p, [k]: v };
 
-    if (["Serie", "PtoEmi", "Secuencial"].includes(k)) {
-      next.NumAtCard = construirReferencia(
-        next.Serie,
-        next.PtoEmi,
-        next.Secuencial
-      );
-    }
+      if (["Serie", "PtoEmi", "Secuencial"].includes(k)) {
+        next.NumAtCard = construirReferencia(
+          next.Serie,
+          next.PtoEmi,
+          next.Secuencial
+        );
+      }
 
-    if (esNotaVenta && k === "Comments") {
-  next.Comments = normalizarComentarioNotaVenta(v);
-}
-
-    return next;
-  });
-};
+      return next;
+    });
+  };
 
   function deptoListForRow(lineaCode) {
     const k = String(lineaCode ?? '').trim();
@@ -455,6 +460,20 @@ function construirReferencia(serie, ptoEmi, secuencial) {
     if (readOnlyTotal || isLock) return;
     setRows(prev => prev.filter((_, i) => i !== ix));
   };
+  useEffect(() => {
+  if (!open) return;
+
+  const base =
+    process.env.NEXT_PUBLIC_BACKEND_URL ||
+    "https://compras-back-ec-prod.onrender.com";
+
+  fetch(`${base}/api/sap/empleados-compras`)
+    .then(r => r.json())
+    .then(data => {
+      setEmpleadosCompras(Array.isArray(data) ? data : []);
+    })
+    .catch(console.error);
+}, [open]);
 
   function handleSelectGasto(i, value) {
     const g = gastos.find(x =>
@@ -634,7 +653,7 @@ function construirReferencia(serie, ptoEmi, secuencial) {
       buildCabecera(data).PtoEmi,
       buildCabecera(data).Secuencial
     ),
-    Comments: esNotaVenta ? COMENTARIO_NV : comentarioInicial,
+    Comments: data?.Cabecera?.Comments || "",
         }));
 
     setFinalizado(false);
@@ -787,9 +806,17 @@ function construirReferencia(serie, ptoEmi, secuencial) {
       throw new Error("No se encontró IdOC.");
     }
 
-    if (!esNotaVenta && !docEntry) {
+    const esCrearManual = !!data?.ModoCrearManual || !!data?.EsCrearManual;
+
+    if (!esNotaVenta && !docEntry && !esCrearManual) {
       throw new Error("No se encontró DocEntry del borrador.");
     }
+
+    const comentarioLimpio = String(cabecera.Comments || "").trim();
+    if (!comentarioLimpio) {
+      throw new Error("El comentario es obligatorio.");
+    }
+
 
     const rowsActuales = (rows || []).map((r) => ({
       ...r,
@@ -826,9 +853,10 @@ function construirReferencia(serie, ptoEmi, secuencial) {
     Cabecera: {
       CardCode: cardCode,
       CardName: cardName,
-      Comments: String(cabecera.Comments || "BORRADOR NOTA DE VENTA").trim(),
+      Comments: comentarioLimpio,
       DocDate: cabecera.DocDate || "",
       DocDueDate: cabecera.DocDueDate || cabecera.DocDate || "",
+      BIO_FechaP: cabecera.BIO_FechaP || cabecera.DocDueDate || cabecera.DocDate || "",
       Serie: String(cabecera.Serie || "").trim(),
       PtoEmi: String(cabecera.PtoEmi || "").trim(),
       Secuencial: String(cabecera.Secuencial || "").trim(),
@@ -836,6 +864,7 @@ function construirReferencia(serie, ptoEmi, secuencial) {
         cabecera.NumAtCard ||
         `${cabecera.Serie}-${cabecera.PtoEmi}-${cabecera.Secuencial}`
       ).trim(),
+      SalesPersonCode: Number(salesPersonCode || -1),
       TipoDoc: "02",
       TipoEmision: "P",
       FormaPago: String(cabecera.FormaPago || "20").trim(),
@@ -930,10 +959,14 @@ await persistFacturaSnapshotOC(idOC, docEntryNV, {
         Comments: commentsNow,
         DocDate: cabecera.DocDate || "",
         DocDueDate: cabecera.DocDueDate || "",
+        FechaPago: cabecera.BIO_FechaP || cabecera.DocDueDate || cabecera.DocDate || "",
+        BIO_FechaP: cabecera.BIO_FechaP || cabecera.DocDueDate || cabecera.DocDate || "",
+        U_BIO_FechaP: cabecera.BIO_FechaP || cabecera.DocDueDate || cabecera.DocDate || "",
         Serie: String(cabecera.Serie || "").trim(),
         PtoEmi: String(cabecera.PtoEmi || "").trim(),
         Secuencial: String(cabecera.Secuencial || "").trim(),
         NumAtCard: String(cabecera.NumAtCard || "").trim(),
+        SalesPersonCode: Number(salesPersonCode || -1),
         TipoDoc: String(cabecera.TipoDoc || "01").trim(),
         TipoEmision: String(cabecera.TipoEmision || "E").trim(),
         NroAutorizacion: String(cabecera.NroAutorizacion || "").trim(),
@@ -993,7 +1026,10 @@ await persistFacturaSnapshotOC(idOC, docEntryNV, {
     console.log("idOC =", idOC);
     console.log("docEntry =", docEntry);
     console.log("payload =", JSON.parse(JSON.stringify(payload)));
-
+    if (esCrearManual) {
+      await crearNuevoBorradorManual(payload);
+      return;
+    }
     const sapResp = await updateFacturaSapDraft(idOC, docEntry, payload);
     console.log("RESPUESTA UPDATE SAP =", sapResp);
 
@@ -1034,11 +1070,85 @@ await persistFacturaSnapshotOC(idOC, docEntryNV, {
       window.location.reload();
     }, 800);
 
-  } catch (e) {
+    } catch (e) {
     console.error("ERROR guardarBorrador:", e);
+
+    const textoError = String(e?.message || e || "").toLowerCase();
+
+    const borradorNoExiste =
+      textoError.includes("no existe") ||
+      textoError.includes("not found") ||
+      textoError.includes("404") ||
+      textoError.includes("este preliminar ya no existe") ||
+      textoError.includes("draft");
+
+    if (borradorNoExiste) {
+      setPayloadPendiente(payload);
+      setPuedeCrearBorradorManual(true);
+
+      setMsg({
+        type: "err",
+        text: "El borrador ya no existe en SAP. Puedes crear uno nuevo con los mismos datos del preview.",
+      });
+      return;
+    }
+
     setMsg({
       type: "err",
       text: e?.message || "No se pudo guardar el borrador.",
+    });
+  } finally {
+    setSending(false);
+  }
+}
+async function crearNuevoBorradorManual(payloadManual = null) {
+  if (sending) return;
+
+  try {
+    setSending(true);
+    setMsg(null);
+
+    const idOC = Number(data?.IdOC || data?.OcId || data?.idOC || 0);
+    const payloadUsar = payloadManual || payloadPendiente;
+
+    if (!idOC) throw new Error("No se encontró IdOC.");
+    if (!payloadUsar) throw new Error("No hay datos para crear el nuevo borrador.");
+
+    const resp = await crearBorradorManualOC(idOC, payloadUsar);
+
+    const nuevoDocEntry = Number(resp?.DocEntry || 0);
+    if (!nuevoDocEntry) {
+      throw new Error("SAP creó el borrador pero no devolvió DocEntry.");
+    }
+
+    await persistFacturaSnapshotOC(idOC, nuevoDocEntry, {
+      ...payloadUsar,
+      Cabecera: {
+        ...payloadUsar.Cabecera,
+        DocEntry: nuevoDocEntry,
+      },
+    });
+
+    await updateOCState(idOC, {
+      estado: "PROCESADA",
+      comentario: payloadUsar?.Cabecera?.Comments || "",
+    });
+
+    alert(`✅ Nuevo borrador creado correctamente en SAP. Draft #${nuevoDocEntry}`);
+
+    setPuedeCrearBorradorManual(false);
+    setPayloadPendiente(null);
+    setBorradorGuardadoOk(true);
+    setFinalizado(true);
+
+    if (typeof onClose === "function") onClose();
+    window.location.reload();
+
+  } catch (e) {
+    console.error("ERROR crearNuevoBorradorManual:", e);
+    setMsg({
+      type: "err",
+      text: e?.message || "No se pudo crear el nuevo borrador.",
     });
   } finally {
     setSending(false);
@@ -1096,7 +1206,30 @@ alert("✅ Borrador actualizado correctamente en SAP y OC procesada");
 
 
 const rowTypeClass = clase === 'ARTICULO' ? styles.articleRow : styles.serviceRow;
+async function actualizarSoloComentario() {
+  try {
+    setSending(true);
+    setMsg(null);
 
+    const idOC = Number(data?.IdOC || data?.OcId || data?.idOC || 0);
+    const docEntry = Number(data?.DocEntry || data?.Cabecera?.DocEntry || 0);
+    const comentario = String(cabecera.Comments || "").trim();
+
+    if (!idOC) throw new Error("No se encontró IdOC.");
+    if (!docEntry) throw new Error("No se encontró DocEntry del preliminar.");
+    if (!comentario) throw new Error("El comentario es obligatorio.");
+
+    await updateComentarioDraftOC(idOC, docEntry, comentario);
+
+    alert("✅ Comentario actualizado correctamente en el preliminar SAP.");
+    window.location.reload();
+
+  } catch (e) {
+    alert(e?.message || "No se pudo actualizar el comentario.");
+  } finally {
+    setSending(false);
+  }
+}
 if (esNotaVenta) {
   return (
     <div className={styles.modalOverlay} role="dialog" aria-modal="true">
@@ -1153,7 +1286,25 @@ if (esNotaVenta) {
     title="Seleccionar proveedor"
   />
 </label>
+              <label>
+  <span>Empleado de compras</span>
 
+  <select
+    value={salesPersonCode}
+    onChange={(e) => setSalesPersonCode(e.target.value)}
+  >
+    <option value="">Seleccione...</option>
+
+    {empleadosCompras.map(emp => (
+      <option
+        key={emp.SalesEmployeeCode}
+        value={emp.SalesEmployeeCode}
+      >
+        {emp.SalesEmployeeName}
+      </option>
+    ))}
+  </select>
+</label>
               <label>
                 <span>Fecha documento</span>
                 <input
@@ -1169,6 +1320,16 @@ if (esNotaVenta) {
                   type="date"
                   value={cabecera.DocDueDate}
                   onChange={(e) => setCab("DocDueDate", e.target.value)}
+                />
+              </label>
+              <label className={styles.field}>
+                <span>Fecha de pago</span>
+                <input
+                  type="date"
+                  value={cabecera.BIO_FechaP}
+                  onChange={e => setCab('BIO_FechaP', e.target.value)}
+                  disabled={isLock || readOnlyTotal}
+                  title={t(cabecera.BIO_FechaP)}
                 />
               </label>
 
@@ -1456,7 +1617,25 @@ return (
               <span>Nombre</span>
               <input readOnly value={cabecera.CardName} title={t(cabecera.CardName)} />
             </label>
+            <label className={styles.field}>
+            <span>Empleado de compras</span>
 
+            <select
+              value={salesPersonCode}
+              onChange={(e) => setSalesPersonCode(e.target.value)}
+            >
+              <option value="">Seleccione...</option>
+
+              {empleadosCompras.map((emp) => (
+                <option
+                  key={emp.SalesEmployeeCode}
+                  value={emp.SalesEmployeeCode}
+                >
+                  {emp.SalesEmployeeName}
+                </option>
+              ))}
+            </select>
+          </label>
             <label className={styles.field}>
               <span>Fecha contable</span>
               <input
@@ -1476,6 +1655,16 @@ return (
                 onChange={e => setCab('DocDueDate', e.target.value)}
                 disabled={isLock || readOnlyTotal}
                 title={t(cabecera.DocDueDate)}
+              />
+            </label>
+            <label className={styles.field}>
+              <span>Fecha de pago</span>
+              <input
+                type="date"
+                value={cabecera.BIO_FechaP}
+                onChange={e => setCab('BIO_FechaP', e.target.value)}
+                disabled={isLock || readOnlyTotal}
+                title={t(cabecera.BIO_FechaP)}
               />
             </label>
 
@@ -1550,8 +1739,7 @@ return (
                 rows={2}
                 value={cabecera.Comments}
                 onChange={e => setCab('Comments', e.target.value)}
-                disabled={isLock || readOnlyTotal}
-                title={t(cabecera.Comments)}
+                disabled={isLock}
               />
             </label>
           </div>
@@ -1921,24 +2109,44 @@ return (
           </div>
 
           <div className={styles.actions}>
-            <button
-              className={styles.secondary}
-              onClick={handleCerrar}
-              disabled={sending}
-              title="Cerrar"
-            >
-              Cerrar
-            </button>
+  <button
+    className={styles.secondary}
+    onClick={handleCerrar}
+    disabled={sending}
+  >
+    Cerrar
+  </button>
 
-            <button
-              className={styles.primary}
-              onClick={guardarBorrador}
-              disabled={sending || readOnlyTotal}
-              title={readOnlyTotal ? "Este borrador ya tiene gasto guardado" : "Guardar cambios del borrador"}
-            >
-              {sending ? 'Guardando…' : (readOnlyTotal ? 'Solo lectura' : 'Guardar borrador')}
-            </button>
-          </div>
+  {soloComentario ? (
+  <button
+    className={styles.primary}
+    onClick={actualizarSoloComentario}
+    disabled={sending}
+  >
+    {sending ? "Actualizando..." : "Actualizar comentario"}
+  </button>
+) : (
+  <>
+    <button
+      className={styles.primary}
+      onClick={guardarBorrador}
+      disabled={sending || readOnlyTotal}
+    >
+      {sending ? "Guardando…" : (readOnlyTotal ? "Solo lectura" : "Guardar borrador")}
+    </button>
+
+    {puedeCrearBorradorManual && (
+      <button
+        className={styles.primary}
+        onClick={crearNuevoBorradorManual}
+        disabled={sending}
+      >
+        {sending ? "Creando…" : "Crear nuevo borrador"}
+      </button>
+    )}
+  </>
+)}
+</div>
         </div>
       </div>
     </div>

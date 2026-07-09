@@ -32,7 +32,7 @@ export default function Sidebar({ session, user, collapsed }) {
   const isContabilidad = rolId === 4 || rolNombre === "CONTABILIDAD";
   const isData = rolId === 5 || rolNombre === "DATA";
   const isCompras = rolId === 6 || rolNombre === "COMPRAS";
-
+  const isInvitado = rolId === 8 || rolNombre === "INVITADO";
   const isBrithanny = userEmail === "brithanny.ortega@biocellsmed.com";
 
   const canSeeDashboard = isAdmin || isCompras;
@@ -55,7 +55,7 @@ export default function Sidebar({ session, user, collapsed }) {
   const canSeeProveedores = isAdmin || isCompras;
 
   const canSeeOrdenes =
-    isAdmin || isCompras || isContabilidad || isBrithanny;
+    isAdmin || isCompras || isContabilidad || isData || isInvitado || isBrithanny;
 
   const canSeeAprobaciones = isAdmin || isJefeTI;
   const canSeeFacturasSap = isAdmin || isData;

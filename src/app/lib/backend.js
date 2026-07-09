@@ -90,14 +90,18 @@ export async function getOCList({
   estado = "",
   q = "",
   historico = "N",
+  fechaDesde = "",
+  fechaHasta = "",
 } = {}) {
   const url = apiUrl("/api/oc", {
-    page,
-    pageSize,
-    estado,
-    q,
-    historico,
-  });
+  page,
+  pageSize,
+  estado,
+  q,
+  historico,
+  fechaDesde,
+  fechaHasta,
+});
 
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) throw new Error(await safeText(res));
@@ -561,19 +565,37 @@ export async function getFormasPago() {
   return fetchJSON(url, { method: "GET" });
 }
 
-export async function solicitarCambioProveedor(cardcode, payload, requestedBy) {
-  const url = apiUrl(
-    `/api/proveedores-sap/${encodeURIComponent(cardcode)}/solicitar-cambio`
-  );
-  return fetchJSON(url, {
+export async function solicitarCambioProveedor(cardcode, payload) {
+  const base = process.env.NEXT_PUBLIC_BACKEND_URL;
+
+  if (payload.bank_cert) {
+    const fd = new FormData();
+    const { bank_cert, ...data } = payload;
+
+    fd.append("data", JSON.stringify(data));
+    fd.append("bank_cert", bank_cert);
+
+    const res = await fetch(`${base}/api/proveedores-sap/${cardcode}/solicitar-cambio`, {
+      method: "POST",
+      body: fd,
+    });
+
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json.error || "Error solicitando cambio");
+    return json;
+  }
+
+  const res = await fetch(`${base}/api/proveedores-sap/${cardcode}/solicitar-cambio`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      ...payload,
-      requestedBy: requestedBy || null,
-    }),
+    body: JSON.stringify(payload),
   });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || "Error solicitando cambio");
+  return json;
 }
+
 export async function updateFacturaSapDraft(idOC, docEntry, payload) {
   return fetchJSON(apiUrl(`/api/oc/${idOC}/prefactura/preview/${docEntry}`), {
     method: "PATCH",
@@ -630,3 +652,48 @@ export async function crearDraftNotaVentaOC(idOC, payload) {
   });
 }
 
+export async function updateComentarioDraftOC(idOC, docEntry, comentario) {
+  const base = process.env.NEXT_PUBLIC_BACKEND_URL || "https://compras-back-ec-prod.onrender.com";
+
+  const res = await fetch(`${base}/api/oc/${idOC}/draft/${docEntry}/comentario`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ Comments: comentario }),
+  });
+
+  const j = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new Error(j?.error || "No se pudo actualizar el comentario.");
+  }
+
+  return j;
+}
+
+export async function crearBorradorManualOC(idOC, payload) {
+  const base =
+    process.env.NEXT_PUBLIC_BACKEND_URL ||
+    "https://compras-back-ec-prod.onrender.com";
+
+  const res = await fetch(
+    `${base}/api/oc/${idOC}/factura/crear-borrador-manual`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  );
+
+  const j = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new Error(
+      j?.sap_body ||
+      j?.details ||
+      j?.error ||
+      "No se pudo crear el borrador manual."
+    );
+  }
+
+  return j;
+}

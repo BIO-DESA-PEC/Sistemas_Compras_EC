@@ -2,6 +2,7 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { getOCList } from "@/app/lib/backend";
 import NumeroOrdenCompraCell from "./NumeroOrdenCompraCell";
+import EstadoSapCell from "./EstadoSapCell";
 import styles from "./ordenes.module.css";
 
 export const dynamic = "force-dynamic";
@@ -17,9 +18,11 @@ export default async function OCListPage({ searchParams }) {
   const isAdmin = rolId === 1 || rolNombre === "ADMINISTRADOR";
   const isBrithanny = userEmail === "brithanny.ortega@biocellsmed.com";
   const canEditNumeroOrdenCompra = true;
-  
+  const canEditEstadoSAP = true;
   const estado = (searchParams?.estado ?? "Todos").toString();
   const q = (searchParams?.q ?? "").toString().trim();
+  const fechaDesde = (searchParams?.fechaDesde ?? "").toString().trim();
+  const fechaHasta = (searchParams?.fechaHasta ?? "").toString().trim();
   const historico = searchParams?.historico === "Y" ? "Y" : "N";
   const facturaSAP = (searchParams?.facturaSAP ?? "").toString().trim();
 
@@ -30,7 +33,7 @@ export default async function OCListPage({ searchParams }) {
   let error = null;
 
   try {
-    const res = await getOCList({ estado, q, historico });
+   const res = await getOCList({ estado, q, historico, fechaDesde, fechaHasta }); 
     if (Array.isArray(res)) items = res;
     else if (Array.isArray(res?.data)) items = res.data;
     else items = [];
@@ -66,6 +69,8 @@ export default async function OCListPage({ searchParams }) {
     newEstado = estado,
     newHistorico = historico,
     newFacturaSAP = facturaSAP,
+    newFechaDesde = fechaDesde,
+    newFechaHasta = fechaHasta,
     page = 1,
   } = {}) => {
     const qs = new URLSearchParams();
@@ -74,6 +79,8 @@ export default async function OCListPage({ searchParams }) {
     if (newFacturaSAP) qs.set("facturaSAP", newFacturaSAP);
     if (newEstado && newEstado !== "Todos") qs.set("estado", newEstado);
     if (newHistorico === "Y") qs.set("historico", "Y");
+    if (newFechaDesde) qs.set("fechaDesde", newFechaDesde);
+    if (newFechaHasta) qs.set("fechaHasta", newFechaHasta);
     if (page > 1) qs.set("page", String(page));
 
     const s = qs.toString();
@@ -106,6 +113,15 @@ export default async function OCListPage({ searchParams }) {
     return out;
   };
 
+  const excelHref = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/oc/export-excel?${new URLSearchParams({
+    ...(q ? { q } : {}),
+    ...(estado && estado !== "Todos" ? { estado } : {}),
+    ...(historico === "Y" ? { historico: "Y" } : {}),
+    ...(fechaDesde ? { fechaDesde } : {}),
+    ...(fechaHasta ? { fechaHasta } : {}),
+    ...(facturaSAP ? { facturaSAP } : {}),
+  }).toString()}`;
+
   return (
     <div className={styles.wrap}>
       <div className={styles.header}>
@@ -119,11 +135,17 @@ export default async function OCListPage({ searchParams }) {
             </p>
           </div>
 
+          <div className={styles.headerActions}>
           <Link href="/ordenes/nueva" className={styles.newBtn}>
             + Nueva orden
           </Link>
-        </div>
 
+          <a href={excelHref} className={styles.newBtn}>
+            Descargar Excel
+          </a>
+        </div>
+        </div>
+        
         <div className={styles.filters}>
           <div className={styles.chipsGroup}>
             {estadoOpts.map((est) => (
@@ -180,7 +202,13 @@ export default async function OCListPage({ searchParams }) {
             {facturaSAP && (
               <input type="hidden" name="facturaSAP" value={facturaSAP} />
             )}
+            {fechaDesde && (
+              <input type="hidden" name="fechaDesde" value={fechaDesde} />
+            )}
 
+            {fechaHasta && (
+              <input type="hidden" name="fechaHasta" value={fechaHasta} />
+            )}
             <input
               name="q"
               placeholder="Buscar por #OC, #Solicitud o #PreOC"
@@ -189,6 +217,46 @@ export default async function OCListPage({ searchParams }) {
 
             <button type="submit">Filtrar</button>
           </form>
+          <form className={styles.dateFilter} action="/ordenes" method="get">
+  {q && <input type="hidden" name="q" value={q} />}
+
+  {estado && estado !== "Todos" && (
+    <input type="hidden" name="estado" value={estado} />
+  )}
+
+  {historico === "Y" && (
+    <input type="hidden" name="historico" value="Y" />
+  )}
+
+  {facturaSAP && (
+    <input type="hidden" name="facturaSAP" value={facturaSAP} />
+  )}
+
+  <input
+    type="date"
+    name="fechaDesde"
+    defaultValue={fechaDesde}
+    title="Fecha desde"
+  />
+
+  <input
+    type="date"
+    name="fechaHasta"
+    defaultValue={fechaHasta}
+    title="Fecha hasta"
+  />
+
+  <button type="submit">Filtrar fechas</button>
+
+  {(fechaDesde || fechaHasta) && (
+  <Link
+    href={`/ordenes${historico === "Y" ? "?historico=Y" : ""}`}
+    className={styles.clearFilter}
+  >
+    Limpiar fechas
+  </Link>
+)}
+</form>
         </div>
       </div>
 
@@ -268,8 +336,13 @@ export default async function OCListPage({ searchParams }) {
                 </form>
               </div>
             </div>
-
+            <div>Cod. proveedor</div>
+            <div>Proveedor</div>
+            <div>Fecha pago</div>
+            <div>Comentario SAP</div>
             <div>Número Orden Compra</div>
+            <div>Estado SAP</div>
+            <div>Comentario cambio estado</div>
             <div className={styles.num}>Total SAP</div>
             <div className={styles.actionsH}>Acciones</div>
           </div>
@@ -337,15 +410,26 @@ export default async function OCListPage({ searchParams }) {
 
                 <div>{r.DraftDocEntry || "—"}</div>
                 <div>{r.FacturaSAP || "—"}</div>
-
+                <div>{r.SapCardCode || "—"}</div>
+                <div>{r.SapCardName || "—"}</div>
+                <div>{r.SapFechaPago ? String(r.SapFechaPago).slice(0, 10) : "—"}</div>
+                <div title={r.SapComments || ""}>
+                  {r.SapComments || "—"}
+                </div>
                 <NumeroOrdenCompraCell
                   idOC={r.IdOC}
                   value={r.NumeroOrdenCompra}
                   canEdit={canEditNumeroOrdenCompra}
                   userEmail={userEmail}
                 />
-
-                <div className={styles.num}>
+                <EstadoSapCell
+                      idOC={r.IdOC}
+                      estadoInicial={r.EstadoSAP}
+                      comentarioInicial={r.ComentarioSAP}
+                      canEdit={canEditEstadoSAP}
+                      userEmail={userEmail}
+                    />
+                  <div className={styles.num}>
                   {Number(r.Total || 0).toLocaleString("es-EC", {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
@@ -353,42 +437,62 @@ export default async function OCListPage({ searchParams }) {
                 </div>
 
                 <div className={styles.actions}>
-                  {r.PendienteFacturar ? (
-                    <Link
-                      href={`/ordenes/${r.IdOC}?facturar=1`}
-                      className={styles.facturarBtn}
-                      title="Facturar"
-                    >
-                      📄
-                    </Link>
-                  ) : r.Estado === "GENERADA" ? (
-                    <Link
-                      href={`/ordenes/${r.IdOC}`}
-                      className={styles.iconBtn}
-                      title="Editar OC"
-                    >
-                      ✎
-                    </Link>
-                  ) : (
-                    <Link
-                      href={`/ordenes/${r.IdOC}`}
-                      className={`${styles.iconBtn} ${styles.ghost}`}
-                      title="Ver OC"
-                    >
-                      👁
-                    </Link>
-                  )}
+  {r.PendienteFacturar ? (
+    <Link
+      href={`/ordenes/${r.IdOC}?facturar=1`}
+      className={styles.facturarBtn}
+      title="Facturar"
+    >
+      📄
+    </Link>
+  ) : r.Estado === "GENERADA" ? (
+    <Link
+      href={`/ordenes/${r.IdOC}`}
+      className={styles.iconBtn}
+      title="Editar OC"
+    >
+      ✎
+    </Link>
+  ) : (
+    <Link
+      href={`/ordenes/${r.IdOC}`}
+      className={`${styles.iconBtn} ${styles.ghost}`}
+      title="Ver OC"
+    >
+      👁
+    </Link>
+  )}
 
-                  <a
-                    href={`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/oc/${r.IdOC}/pdf`}
-                    target="_blank"
-                    rel="noopener"
-                    className={`${styles.iconBtn} ${styles.ghost}`}
-                    title="PDF"
-                  >
-                    PDF
-                  </a>
-                </div>
+  <a
+    href={`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/oc/${r.IdOC}/pdf`}
+    target="_blank"
+    rel="noopener"
+    className={`${styles.iconBtn} ${styles.ghost}`}
+    title="Descargar orden de compra"
+  >
+    OC
+  </a>
+
+  {r.FacturaAdjuntoId ? (
+    <a
+      href={`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/oc/${r.IdOC}/factura/adjunto/${r.FacturaAdjuntoId}/download`}
+      target="_blank"
+      rel="noopener"
+      className={`${styles.iconBtn} ${styles.ghost}`}
+      title="Descargar factura"
+    >
+      FAC
+    </a>
+  ) : (
+    <span
+      className={`${styles.iconBtn} ${styles.ghost}`}
+      title="Sin factura adjunta"
+      style={{ opacity: 0.45, cursor: "not-allowed" }}
+    >
+      FAC
+    </span>
+  )}
+</div>
               </div>
             ))
           )}

@@ -1,7 +1,7 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { getUserByEmail } from "@/app/lib/backend";
-import { Eye, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
+import { Eye, RefreshCw, ChevronLeft, ChevronRight, FileText } from "lucide-react";
 import AnticipoFacturarButton from "./AnticipoFacturarButton";
 import styles from "./anticipos.module.css";
 
@@ -179,6 +179,16 @@ export default async function AnticiposPage({ searchParams }) {
                             >
                               <Eye size={17} />
                             </ActionButton>
+
+                            {a.AdjuntoPdfUrl && (
+                              <ActionButton
+                                href={a.AdjuntoPdfUrl}
+                                title="Ver / descargar PDF"
+                                variant="green"
+                              >
+                                <FileText size={17} />
+                              </ActionButton>
+                            )}
 
                             {puedeVerTodos && estado !== "ANULADA" && (
                               <ActionButton

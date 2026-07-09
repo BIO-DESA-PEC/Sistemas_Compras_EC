@@ -181,15 +181,22 @@
     120px
     190px
     220px
-    220px
+    160px
     110px
     170px
+    140px
+    240px
+    140px
+    260px
     210px
-    120px
+    220px
+    260px
+    130px
     130px;
+
   align-items:center;
   column-gap:14px;
-  min-width:1750px;
+  min-width:3120px;
   padding:14px 18px;
   border-bottom:1px solid #e5e7eb;
   background:#fff;
@@ -209,60 +216,70 @@
   color:#0f172a;
 }
 
-.row > div:last-child,
-.row > .actions{
-  position:sticky;
-  right:0;
-  z-index:4;
-  background:inherit;
-  border-left:1px solid #e5e7eb;
-  box-shadow:-10px 0 18px -18px rgba(15,23,42,.45);
-}
 
-.headerRow > div:last-child{
-  z-index:8;
-  background:#f9fafb;
-}
 
 .actionsH{
-  text-align:center;
+  position: sticky;
+  right: 0;
+  z-index: 50;
+  background: #f9fafb;
+  border-left: 1px solid #e5e7eb;
+  text-align: center;
 }
 
 .actions{
-  justify-self:stretch;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  gap:8px;
-  min-height:34px;
+  position: sticky;
+  right: 0;
+  z-index: 40;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+
+  padding: 10px 14px;
+  min-height: 100%;
+
+  background: #ffffff;
+  border-left: 1px solid #e5e7eb;
+  box-shadow: -12px 0 18px rgba(15,23,42,.06);
+}
+
+/* cuando haces hover la fila, el fondo sigue siendo blanco */
+.row:hover .actions{
+  background:#ffffff;
 }
 
 .iconBtn,
 .facturarBtn{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
   width:42px;
   height:42px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+
   border-radius:12px;
   border:1px solid #e5e7eb;
+
   background:#fff;
+
   color:#2563eb;
-  font-size:12px;
-  font-weight:900;
+  font-size:13px;
+  font-weight:800;
+
   text-decoration:none;
+
+  transition:.18s;
 }
 
 .iconBtn:hover,
 .facturarBtn:hover{
   background:#eff6ff;
   border-color:#bfdbfe;
-  color:#1d4ed8;
 }
 
 .ghost{
   background:#fff;
-  color:#2563eb;
 }
 
 .filterHeader{
@@ -616,4 +633,104 @@
 .numeroOcBtn:disabled{
   opacity:.6;
   cursor:not-allowed;
+}
+
+.sapBox{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+
+.sapSelect{
+  height:34px;
+  border:1px solid #dbe3ef;
+  border-radius:10px;
+  padding:0 8px;
+  font-size:13px;
+  outline:none;
+  background:#fff;
+}
+
+.sapComment{
+  width:240px;
+  height:34px;
+  border:1px solid #dbe3ef;
+  border-radius:10px;
+  padding:0 9px;
+  font-size:13px;
+  outline:none;
+}
+
+.sapComment:focus,
+.sapSelect:focus{
+  border-color:#93c5fd;
+  box-shadow:0 0 0 3px rgba(147,197,253,.28);
+}
+
+.sapBadgePendiente{
+  background:#fff3cd;
+  color:#8a6d3b;
+  border:1px solid #ffe8a1;
+}
+
+.sapBadgeProcesado{
+  background:#e8eefc;
+  color:#3346d3;
+}
+
+.sapBadgeRechazado{
+  background:#fee2e2;
+  color:#b91c1c;
+}
+.sapBtn{
+  width:34px;
+  height:34px;
+  border:0;
+  border-radius:10px;
+  background:#2563eb;
+  color:white;
+  font-weight:900;
+  cursor:pointer;
+}
+
+.sapBtn:disabled{
+  opacity:.6;
+  cursor:not-allowed;
+}
+
+.dateFilter{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.dateFilter input{
+  height:40px;
+  padding:0 10px;
+  border:1px solid #d1d5db;
+  border-radius:10px;
+  outline:none;
+  font-size:13px;
+}
+
+.dateFilter input:focus{
+  border-color:#93c5fd;
+  box-shadow:0 0 0 3px rgba(147,197,253,.35);
+}
+
+.dateFilter button{
+  height:40px;
+  padding:0 14px;
+  border:0;
+  border-radius:10px;
+  background:#0f172a;
+  color:#fff;
+  font-weight:900;
+  cursor:pointer;
+}
+.headerActions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
 }

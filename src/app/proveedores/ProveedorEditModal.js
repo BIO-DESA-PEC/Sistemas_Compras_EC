@@ -25,7 +25,7 @@ export default function ProveedorEditModal({
   // ✅ Ahora guardamos el GroupNum directamente (PayTermsGrpCode en SAP)
   const [PayTermsGrpCode, setPayTerms] = useState("");
   const [U_SYP_FPAGO, setFpago] = useState("");
-
+  const [bankCert, setBankCert] = useState(null);
   const condById = useMemo(() => {
     const m = new Map();
     condiciones.forEach((c) => m.set(Number(c.GroupNum), c));
@@ -39,11 +39,7 @@ export default function ProveedorEditModal({
     setPhone1(proveedor.Phone1 || "");
     setPhone2(proveedor.Phone2 || "");
     setFpago(proveedor.U_SYP_FPAGO || "");
-
-    // ✅ Si tu endpoint ALL no trae PayTermsGrpCode (no lo trae),
-    // entonces no podemos setearlo desde ahí.
-    // Pero sí podemos inferir por días SOLO para mostrar algo inicial:
-    // buscamos la primera condición cuyo ExtraDays == proveedor.DiasCredito.
+    setBankCert(null);
     const dias = proveedor.DiasCredito;
     if (dias === null || dias === undefined || dias === "") {
       setPayTerms("");
@@ -66,6 +62,7 @@ export default function ProveedorEditModal({
       Phone2: Phone2.trim(),
       U_SYP_FPAGO: U_SYP_FPAGO.trim(),
       PayTermsGrpCode: asIntOrNull(PayTermsGrpCode),
+      bank_cert: bankCert,
     };
 
     onSave?.(payload);
@@ -151,39 +148,59 @@ export default function ProveedorEditModal({
             </div>
 
             <div className={styles.field} style={{ gridColumn: "1 / -1" }}>
-              <label>Condición de pago (Días crédito)</label>
+            <label>Condición de pago (Días crédito)</label>
 
-              {/* ✅ VALUE = GroupNum, no días */}
-              <select
-                value={PayTermsGrpCode}
-                onChange={(e) => setPayTerms(e.target.value)}
-                disabled={saving}
-              >
-                <option value="">-- Seleccione --</option>
-                {condiciones.map((c) => (
-                  <option key={c.GroupNum} value={c.GroupNum}>
-                    {c.PymntGroup} ({c.ExtraDays} días)
-                  </option>
-                ))}
-              </select>
+            <select
+              value={PayTermsGrpCode}
+              onChange={(e) => setPayTerms(e.target.value)}
+              disabled={saving}
+            >
+              <option value="">-- Seleccione --</option>
+              {condiciones.map((c) => (
+                <option key={c.GroupNum} value={c.GroupNum}>
+                  {c.PymntGroup} ({c.ExtraDays} días)
+                </option>
+              ))}
+            </select>
 
-              {condSelected ? (
-                <div className={styles.help}>
-                  ✅ Seleccionado: <b>{condSelected.PymntGroup}</b> • {condSelected.ExtraDays} días
-                  <div style={{ marginTop: 4, opacity: 0.85 }}>
-                    (Se guardará en SAP como PayTermsGrpCode = <b>{condSelected.GroupNum}</b>)
-                  </div>
-                </div>
-              ) : (
-                <div className={styles.help}>Tip: aquí controlas los días de crédito (OCTG).</div>
-              )}
+            {condSelected ? (
+              <div className={styles.help}>
+                ✅ Seleccionado: <b>{condSelected.PymntGroup}</b> • {condSelected.ExtraDays} días
+              </div>
+            ) : (
+              <div className={styles.help}>Tip: aquí controlas los días de crédito (OCTG).</div>
+            )}
+          </div>
 
-              {error ? (
-                <div style={{ marginTop: 8, color: "#b00020", fontSize: 13 }}>
-                  {error}
-                </div>
-              ) : null}
-            </div>
+          <div className={styles.field} style={{ gridColumn: "1 / -1" }}>
+            <label>Certificado bancario</label>
+
+            {proveedor?.BankCertUrl ? (
+              <div className={styles.help}>
+                Certificado actual:{" "}
+                <a href={proveedor.BankCertUrl} target="_blank" rel="noopener noreferrer">
+                  Ver / Descargar
+                </a>
+              </div>
+            ) : (
+              <div className={styles.help}>
+                Este proveedor no tiene certificado bancario cargado.
+              </div>
+            )}
+
+            <input
+              type="file"
+              accept="application/pdf,image/*"
+              disabled={saving}
+              onChange={(e) => setBankCert(e.target.files?.[0] || null)}
+            />
+
+            {bankCert ? (
+              <div className={styles.help}>
+                Nuevo archivo seleccionado: <b>{bankCert.name}</b>
+              </div>
+            ) : null}
+          </div>
           </div>
         </div>
 

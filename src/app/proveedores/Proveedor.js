@@ -10,12 +10,15 @@ import {
   getFormasPago,
 } from "@/app/lib/backend";
 import ProveedorEditModal from "./ProveedorEditModal";
+import { CreateProveedorModal } from "@/components/SupplierSelect";
 
 const PAGE_SIZE = 20;
 
 /* =========================
  * Helpers estado
  * ========================= */
+
+
 function labelEstado(v) {
   const s = String(v || "").toUpperCase().trim();
   if (!s || s === "NORMAL" || s === "APPROVED" || s === "APROBADO") return "Normal";
@@ -54,14 +57,14 @@ export default function Proveedor() {
 
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState(null);
-
+  const [toast, setToast] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [saveOkMsg, setSaveOkMsg] = useState("");
+  const [openCreate, setOpenCreate] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setErr("");
-    setSaveOkMsg("");
+    setToast(null);
 
     try {
       const [prov, cond, fp] = await Promise.all([
@@ -106,7 +109,7 @@ export default function Proveedor() {
     // ✅ Editar SOLO abre modal
     setSelected(r);
     setErr("");
-    setSaveOkMsg("");
+    setToast(null);
     setOpen(true);
   }
 
@@ -118,14 +121,15 @@ export default function Proveedor() {
     }
 
     setErr("");
-    setSaveOkMsg("");
+    setToast(null);
     setSaving(true);
 
     try {
       const requestedBy = session?.user?.email || null;
-
-      // ✅ Aquí SÍ se manda el correo (crea solicitud PENDING)
-      const resp = await solicitarCambioProveedor(card, updatedPayload, requestedBy);
+      const resp = await solicitarCambioProveedor(card, {
+        ...updatedPayload,
+        requestedBy,
+      });
       console.log("[solicitarCambioProveedor] resp =>", resp);
 
       await load();
@@ -133,7 +137,12 @@ export default function Proveedor() {
       setOpen(false);
       setSelected(null);
 
-      setSaveOkMsg("✅ Solicitud enviada a Contabilidad para aprobación.");
+      setToast({
+  type: "success",
+  text: "Solicitud enviada a Contabilidad para aprobación.",
+});
+
+setTimeout(() => setToast(null), 3500);
     } catch (e) {
       console.error(e);
       setErr(String(e?.message || e));
@@ -162,11 +171,27 @@ export default function Proveedor() {
           <button className={styles.btn} onClick={load} disabled={loading}>
             {loading ? "Cargando..." : "Buscar"}
           </button>
+          <button
+          className={styles.btnBlue}
+          type="button"
+          onClick={() => setOpenCreate(true)}
+        >
+          ➕ Crear proveedor
+        </button>
         </div>
       </div>
 
       {err ? <div className={styles.error}>⚠️ {err}</div> : null}
-      {saveOkMsg ? <div className={styles.success}>{saveOkMsg}</div> : null}
+      {toast ? (
+        <div className={`${styles.toast} ${styles[toast.type]}`}>
+          <div className={styles.toastIcon}>✓</div>
+          <div>
+            <strong>Listo</strong>
+            <p>{toast.text}</p>
+          </div>
+          <button onClick={() => setToast(null)}>×</button>
+        </div>
+      ) : null}
 
       <div className={styles.card}>
         <div className={styles.tableWrap}>
@@ -218,17 +243,25 @@ export default function Proveedor() {
 
                       <td className={styles.actionsCell}>
                         <button
-                          className={styles.btnBlue}
-                          onClick={() => openEdit(r)}
-                          disabled={saving || enEspera}
-                          title={
-                            enEspera
-                              ? "Este proveedor tiene cambios pendientes de aprobación"
-                              : "Editar proveedor"
-                          }
-                        >
-                          Editar
-                        </button>
+                      className={styles.iconBtn}
+                      onClick={() => openEdit(r)}
+                      disabled={saving || enEspera}
+                      title="Editar"
+                    >
+                      ✏️
+                    </button>
+
+                    {r.BankCertUrl ? (
+                      <a
+                        className={styles.iconBtnGhost}
+                        href={r.BankCertUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Descargar certificado"
+                      >
+                        📄
+                      </a>
+                    ) : null}
                       </td>
                     </tr>
                   );
@@ -262,6 +295,21 @@ export default function Proveedor() {
         saving={saving}
         error={err}
       />
+      {openCreate && (
+        <CreateProveedorModal
+          onClose={() => setOpenCreate(false)}
+          onCreated={async () => {
+            setOpenCreate(false);
+            setToast({
+              type: "success",
+              text: "Proveedor creado y notificado a Contabilidad.",
+            });
+
+            setTimeout(() => setToast(null), 3500);
+            await load();
+          }}
+        />
+      )}
     </div>
   );
 }

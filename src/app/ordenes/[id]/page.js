@@ -3,10 +3,10 @@ import { auth } from "@/auth";
 import { getOC } from "@/app/lib/backend";
 import OCEditor from "./ui/OCEditor";
 import styles from "./orden.module.css";
-import Link from "next/link";
 
 export default async function OCDetailPage({ params }) {
   await auth();
+
   const id = params.id;
   const data = await getOC(id);
 
@@ -50,10 +50,6 @@ export default async function OCDetailPage({ params }) {
           >
             {cabecera.Estado}
           </span>
-
-          <Link href="/ordenes" className={styles.backLink}>
-            ← Volver
-          </Link>
         </div>
       </div>
 

@@ -314,7 +314,7 @@ interface CreateProveedorModalProps {
   onCreated?: (nombre: string) => void;
 }
 
-function CreateProveedorModal({ onClose, onCreated }: CreateProveedorModalProps) {
+export function CreateProveedorModal({ onClose, onCreated }: CreateProveedorModalProps) {
   const [form, setForm] = useState<CreateForm>({
     NombreProveedor: "",
     IdProveedor: "",

@@ -730,6 +730,19 @@
   min-height: 76px;
   resize: vertical;
 }
+.formGrid select{
+  width: 100%;
+  height: var(--ctl-h);
+  border: 1px solid var(--bd);
+  border-radius: 12px;
+  padding: 8px 12px;
+  outline: none;
+  background: #fff;
+}
+.formGrid select:focus{
+  border-color: var(--focus);
+  box-shadow: 0 0 0 3px var(--focusRing);
+}
 
 .gridFull{
   grid-column: 1 / -1;
