@@ -29,32 +29,40 @@ export default async function OCListPage({ searchParams }) {
   const pageParam = parseInt((searchParams?.page ?? "1").toString(), 10);
   const currentPage = Number.isNaN(pageParam) || pageParam < 1 ? 1 : pageParam;
 
-  let items = [];
+  // --- NUEVO: la paginación, el total y el filtro de facturaSAP ahora
+  // los resuelve el backend. Ya no se trae ni se filtra el arreglo completo aquí. ---
+  let paginated = [];
+  let total = 0;
+  let totalPages = 1;
+  let safePage = currentPage;
   let error = null;
 
   try {
-   const res = await getOCList({ estado, q, historico, fechaDesde, fechaHasta }); 
-    if (Array.isArray(res)) items = res;
-    else if (Array.isArray(res?.data)) items = res.data;
-    else items = [];
+    const res = await getOCList({
+      estado,
+      q,
+      historico,
+      fechaDesde,
+      fechaHasta,
+      facturaSAP,
+      page: currentPage,
+      pageSize: PAGE_SIZE,
+    });
+
+    // getOCList debe pasar estos params tal cual al backend
+    // (?page=&pageSize=&facturaSAP=) — ver nota al final.
+    paginated = Array.isArray(res?.data) ? res.data : [];
+    total = Number(res?.total ?? 0);
+    totalPages = Number(res?.totalPages ?? 1);
+    safePage = Number(res?.page ?? currentPage);
   } catch (e) {
     error = e?.message ?? "Error cargando órdenes";
-    items = [];
+    paginated = [];
+    total = 0;
+    totalPages = 1;
   }
 
-  if (facturaSAP) {
-    const needle = facturaSAP.toLowerCase();
-
-    items = items.filter((x) =>
-      String(x.FacturaSAP || "").toLowerCase().includes(needle)
-    );
-  }
-
-  const total = items.length;
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const safePage = Math.min(currentPage, totalPages);
   const start = (safePage - 1) * PAGE_SIZE;
-  const paginated = items.slice(start, start + PAGE_SIZE);
 
   const estadoOpts = [
     "Todos",
