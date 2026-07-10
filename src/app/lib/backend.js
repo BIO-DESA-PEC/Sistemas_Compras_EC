@@ -2,7 +2,7 @@
 
 // Base pública (llega al cliente). Ej.: http://127.0.0.1:8000
 export const API_BASE =
-  process.env.NEXT_PUBLIC_BACKEND_URL || "https://compras-back-ec-prod.onrender.com";
+  process.env.NEXT_PUBLIC_BACKEND_URL || "https://back-compras-ec.onrender.com";
 
 // Helper para armar URLs de forma segura
 function apiUrl(path, params) {
@@ -173,8 +173,14 @@ export async function getPendingApprovals(userId) {
   return res.json();
 }
 
-export async function postApprovalsDecide(actorId, approvalIds, action, comentario) {
+export async function postApprovalsDecide(
+  actorId,
+  approvalIds,
+  action,
+  comentario
+) {
   const url = apiUrl("/api/approvals/decide-batch");
+
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -186,8 +192,18 @@ export async function postApprovalsDecide(actorId, approvalIds, action, comentar
       comentario: comentario || "",
     }),
   });
-  if (!res.ok) throw new Error(await safeText(res));
-  return res.json();
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok || Number(data?.errors || 0) > 0) {
+    throw new Error(
+      data?.messages?.join("\n") ||
+      data?.error ||
+      "No se pudo completar la aprobación."
+    );
+  }
+
+  return data;
 }
 
 /* ================================
@@ -604,7 +620,7 @@ export async function updateFacturaSapDraft(idOC, docEntry, payload) {
   });
 }
 export async function createOCDirecta(payload) {
-  const base = process.env.NEXT_PUBLIC_BACKEND_URL || "https://compras-back-ec-prod.onrender.com";
+  const base = process.env.NEXT_PUBLIC_BACKEND_URL || "https://back-compras-ec.onrender.com";
 
   const res = await fetch(`${base}/api/oc-directa`, {
     method: "POST",
@@ -653,7 +669,7 @@ export async function crearDraftNotaVentaOC(idOC, payload) {
 }
 
 export async function updateComentarioDraftOC(idOC, docEntry, comentario) {
-  const base = process.env.NEXT_PUBLIC_BACKEND_URL || "https://compras-back-ec-prod.onrender.com";
+  const base = process.env.NEXT_PUBLIC_BACKEND_URL || "https://back-compras-ec.onrender.com";
 
   const res = await fetch(`${base}/api/oc/${idOC}/draft/${docEntry}/comentario`, {
     method: "PATCH",
@@ -673,7 +689,7 @@ export async function updateComentarioDraftOC(idOC, docEntry, comentario) {
 export async function crearBorradorManualOC(idOC, payload) {
   const base =
     process.env.NEXT_PUBLIC_BACKEND_URL ||
-    "https://compras-back-ec-prod.onrender.com";
+    "https://back-compras-ec.onrender.com";
 
   const res = await fetch(
     `${base}/api/oc/${idOC}/factura/crear-borrador-manual`,
@@ -696,4 +712,65 @@ export async function crearBorradorManualOC(idOC, payload) {
   }
 
   return j;
+}
+
+export async function getApprovedApprovals(userId) {
+  const url = apiUrl("/api/approvals/approved", { userId });
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(await safeText(res));
+  return res.json();
+}
+
+export async function getApprovedApprovalDetail(userId, solicitudId) {
+  const url = apiUrl(
+    `/api/approvals/approved/${solicitudId}/detail`,
+    { userId }
+  );
+
+  const response = await fetch(url, {
+    method: "GET",
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(
+      data?.detalle ||
+        data?.error ||
+        "No se pudo consultar el detalle de la solicitud aprobada."
+    );
+  }
+
+  return data;
+}
+
+export async function getPendingApprovalDetail(userId, approvalId) {
+  const url = apiUrl(
+    `/api/approvals/pending/${approvalId}/detail`,
+    { userId }
+  );
+
+  const response = await fetch(url, {
+    method: "GET",
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(
+      data?.detalle ||
+        data?.error ||
+        "No se pudo consultar el detalle de la solicitud pendiente."
+    );
+  }
+
+  return data;
 }

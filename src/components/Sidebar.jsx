@@ -197,10 +197,14 @@ export default function Sidebar({ session, user, collapsed }) {
             </a>
 
             <div className={styles.submenu}>
-              <a href="/aprobaciones/solicitudes" className={styles.subitem}>
-                Solicitudes
-              </a>
-            </div>
+            <a href="/aprobaciones/solicitudes" className={styles.subitem}>
+              Solicitudes pendientes
+            </a>
+
+            <a href="/aprobaciones/aprobadas" className={styles.subitem}>
+              Mis aprobaciones
+            </a>
+          </div>
           </>
         )}
 
