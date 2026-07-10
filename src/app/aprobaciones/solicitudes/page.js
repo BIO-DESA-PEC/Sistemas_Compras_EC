@@ -19,7 +19,7 @@ import {
   getPendingApprovalDetail,
 } from "@/app/lib/backend";
 
-import AprobacionesClient from "../ui/AprobacionesClient";
+import SolicitudDetalleModal from "../ui/SolicitudDetalleModal";
 
 function formatDate(value) {
   if (!value) return "--";
