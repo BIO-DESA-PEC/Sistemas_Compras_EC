@@ -162,10 +162,14 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
 
   const [factTipo, setFactTipo] = useState(null);
 
+  // NOTA: para OC provenientes de ANTICIPO, no bloqueamos la edición aunque ya
+  // esté aprobada (nivel PENDIENTE/APROBADA), porque el usuario debe poder
+  // seguir corrigiendo el Proveedor y volver a guardar/actualizar la OC.
+  // Solo se bloquea si la OC ya está PROCESADA o ANULADA.
   const editable = !(
     estado === "PROCESADA" ||
     estado === "ANULADA" ||
-    (ocAprob?.existe && (ocAprob.estado === "PENDIENTE" || ocAprob.estado === "APROBADA"))
+    (!esAnticipo && ocAprob?.existe && (ocAprob.estado === "PENDIENTE" || ocAprob.estado === "APROBADA"))
   );
 
   const enAprobacion = ocAprob?.existe && ocAprob.estado === "PENDIENTE";
@@ -418,28 +422,38 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
   const saveDetail = useCallback(async ({ autoApprove = false, tipoAprobacion = "JEFE" } = {}) => {
   try {
     if (esOCDirecta) {
-  const usuarioId = user?.Id || user?.id || user?.IdUsuario || null;
-  const correoUsuario = session?.user?.email || "";
+      const usuarioId = user?.Id || user?.id || user?.IdUsuario || null;
+      const correoUsuario = session?.user?.email || "";
 
-  if (!usuarioId && !correoUsuario) {
-    throw new Error("No se pudo identificar el usuario logueado.");
-  }
+      if (!usuarioId && !correoUsuario) {
+        throw new Error("No se pudo identificar el usuario logueado.");
+      }
 
-  const resp = await createOCDirecta({
-    IdUsuario: usuarioId,
-    CorreoUsuario: correoUsuario,
-    DepartamentoId: user?.DepartamentoId || null,
-    Tipo: oc?.Tipo || "SERVICIO",
-    FormaPago: oc?.FormaPago || "20",
-    DiasPago: diasPago || 0,
-    Comentario: "OC DIRECTA",
-    detalle,
-  });
+      const resp = await createOCDirecta({
+        IdUsuario: usuarioId,
+        CorreoUsuario: correoUsuario,
+        DepartamentoId: user?.DepartamentoId || null,
+        Tipo: oc?.Tipo || "SERVICIO",
+        FormaPago: oc?.FormaPago || "20",
+        DiasPago: diasPago || 0,
+        Comentario: "OC DIRECTA",
+        detalle,
+      });
 
-  alert("OC directa creada correctamente.");
-  router.push(`/ordenes/${resp.IdOC}`);
-  return;
-}
+      alert("OC directa creada correctamente.");
+      router.push(`/ordenes/${resp.IdOC}`);
+      return;
+    }
+
+    // NUEVO: si la OC viene de un ANTICIPO y ya está APROBADA, solo
+    // actualizamos el detalle (p. ej. Proveedor) sin volver a disparar
+    // el flujo de aprobación (Jefe/CEO), porque ya no aplica.
+    if (esAnticipo && ocAprob?.existe && ocAprob.estado === "APROBADA") {
+      await replaceOCDetail(oc.IdOC, detalle);
+      await refreshApprovalStatus();
+      alert("Datos del anticipo actualizados correctamente. La OC sigue aprobada.");
+      return;
+    }
 
     await replaceOCDetail(oc.IdOC, detalle);
 
@@ -482,6 +496,8 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
   refreshApprovalStatus,
   esMensual,
   esOCDirecta,
+  esAnticipo,
+  ocAprob,
   user?.Id,
   user?.DepartamentoId,
   router
@@ -964,7 +980,17 @@ const handleVolver = () => {
       Agregar línea
     </button>
 
-    {esMensual ? (
+    {esAnticipo && ocAprob?.existe && ocAprob.estado === "APROBADA" ? (
+      // Anticipo ya aprobado: solo permitimos actualizar (p. ej. Proveedor)
+      // sin volver a disparar el flujo de aprobación de Jefe/CEO.
+      <button
+        className={styles.primary}
+        onClick={() => saveDetail({ autoApprove: true })}
+        title="Anticipo ya aprobado: se actualiza el detalle/proveedor sin reabrir aprobación"
+      >
+        Guardar cambios (Anticipo)
+      </button>
+    ) : esMensual ? (
       <button
         className={styles.primary}
         onClick={() => saveDetail({ autoApprove: true })}
@@ -1477,9 +1503,15 @@ const handleVolver = () => {
         </p>
       )}
 
-      {ocAprob?.estado === "APROBADA" && ocAprob?.existe && (
+      {ocAprob?.estado === "APROBADA" && ocAprob?.existe && !esAnticipo && (
         <p className={styles.note}>
           * Aprobada (nivel {ocAprob.nivel_max}/{ocAprob.nivel_max}). Ya no se puede modificar el detalle; puedes Facturar o Anular.
+        </p>
+      )}
+
+      {ocAprob?.estado === "APROBADA" && ocAprob?.existe && esAnticipo && (
+        <p className={styles.note}>
+          * Anticipo aprobado (nivel {ocAprob.nivel_max}/{ocAprob.nivel_max}). Puedes seguir editando el Proveedor y demás datos y guardar los cambios; también puedes Facturar o Anular.
         </p>
       )}
 
