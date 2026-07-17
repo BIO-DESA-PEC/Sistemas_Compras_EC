@@ -50,7 +50,7 @@ export default function Sidebar({ session, user, collapsed }) {
   const canSeeTarjetasCredito = isAdmin || isCompras;
   const canSeeAnticipos = isAdmin || isCompras || isContabilidad;
   const canSeeReportes = isAdmin || isCompras || isContabilidad;
-  const canSeeSolicitudes = isAdmin || isCompras;
+  const canSeeSolicitudes = isAdmin || isCompras|| isUsuario;
   const canSeePreordenes = isAdmin || isCompras;
   const canSeeProveedores = isAdmin || isCompras || isContabilidad;
 
