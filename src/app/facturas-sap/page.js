@@ -7,6 +7,7 @@ import {
   getFacturasSap,
   getFacturaSapByDraft,
   getUserByEmail,
+  downloadFacturaAdjuntoOC,
 } from '@/app/lib/backend';
 import { useSession } from "next-auth/react";
 
@@ -119,6 +120,33 @@ export default function FacturasSAPPage() {
   const goToPage = (p) => {
     if (p < 1 || p > totalPages) return;
     setPage(p);
+  };
+
+  // ✅ Misma lógica de truncado de páginas que usa /ordenes
+  // (1 … 5 6 7 … 40 en vez de listar todos los números sueltos)
+  const pageNumbers = () => {
+    const max = totalPages;
+    const curr = currentPage;
+    const out = [];
+
+    const add = (n) => out.push({ n, active: n === curr });
+
+    if (max <= 7) {
+      for (let n = 1; n <= max; n++) add(n);
+    } else {
+      add(1);
+      if (curr > 3) out.push({ ellipsis: true, key: 'start' });
+
+      const s = Math.max(2, curr - 1);
+      const e = Math.min(max - 1, curr + 1);
+
+      for (let n = s; n <= e; n++) add(n);
+
+      if (curr < max - 2) out.push({ ellipsis: true, key: 'end' });
+      add(max);
+    }
+
+    return out;
   };
 
   const handleOpenDraft = async (row) => {
@@ -249,7 +277,9 @@ export default function FacturasSAPPage() {
             <tbody>
               {paginatedFacturas.map((f, i) => {
                 const hasGasto = !!f?.TieneGasto;
-                const label = hasGasto ? "Ver" : "Editar";
+                const pdfHref = f.FacturaAdjuntoId
+                  ? downloadFacturaAdjuntoOC(f.IdOC, f.FacturaAdjuntoId)
+                  : null;
 
                 return (
                   <tr key={`${f.IdOC}-${f.DraftDocEntry}-${i}`}>
@@ -278,18 +308,105 @@ export default function FacturasSAPPage() {
                     </td>
 
                     <td>
-                      <button
-                        className={styles.btn}
-                        onClick={() => handleOpenDraft(f)}
-                        disabled={loadingDraft}
-                        title={
-                          hasGasto
-                            ? "Este borrador ya tiene gasto registrado"
-                            : "Editar borrador"
-                        }
-                      >
-                        {loadingDraft ? 'Cargando…' : label}
-                      </button>
+                      <div className={styles.actions}>
+                        {/* Icono: ver/descargar PDF de factura */}
+                        {pdfHref ? (
+                          <a
+                            href={pdfHref}
+                            target="_blank"
+                            rel="noopener"
+                            className={styles.iconBtn}
+                            title={f.FacturaAdjuntoNombre || 'Ver PDF de factura'}
+                          >
+                            <svg viewBox="0 0 24 24" fill="none">
+                              <path
+                                d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinejoin="round"
+                              />
+                              <path
+                                d="M14 3v5h5"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinejoin="round"
+                              />
+                              <path
+                                d="M9 13h6M9 17h6"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinecap="round"
+                              />
+                            </svg>
+                          </a>
+                        ) : (
+                          <span
+                            className={`${styles.iconBtn} ${styles.iconBtnDisabled}`}
+                            title="Sin factura adjunta"
+                          >
+                            <svg viewBox="0 0 24 24" fill="none">
+                              <path
+                                d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinejoin="round"
+                              />
+                              <path
+                                d="M14 3v5h5"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          </span>
+                        )}
+
+                        {/* Icono: editar/ver borrador SAP */}
+                        <button
+                          type="button"
+                          className={styles.iconBtn}
+                          onClick={() => handleOpenDraft(f)}
+                          disabled={loadingDraft}
+                          title={
+                            hasGasto
+                              ? "Ver borrador (ya tiene gasto registrado)"
+                              : "Editar borrador"
+                          }
+                        >
+                          {hasGasto ? (
+                            <svg viewBox="0 0 24 24" fill="none">
+                              <path
+                                d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12Z"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinejoin="round"
+                              />
+                              <circle
+                                cx="12"
+                                cy="12"
+                                r="3"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                              />
+                            </svg>
+                          ) : (
+                            <svg viewBox="0 0 24 24" fill="none">
+                              <path
+                                d="M4 20h4l10.5-10.5a2 2 0 0 0 0-2.8l-1.2-1.2a2 2 0 0 0-2.8 0L4 16v4Z"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinejoin="round"
+                              />
+                              <path
+                                d="M13.5 6.5 17.5 10.5"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinecap="round"
+                              />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -297,46 +414,55 @@ export default function FacturasSAPPage() {
             </tbody>
           </table>
 
-          <div className={styles.pagination}>
-            <div className={styles.pageButtons}>
-              <button
-                className={`${styles.pageBtn} ${styles.arrowBtn} ${
-                  currentPage === 1 ? styles.pageBtnDisabled : ''
-                }`}
-                onClick={() => goToPage(currentPage - 1)}
-                disabled={currentPage === 1}
-              >
-                «
-              </button>
+          {/* ✅ Paginación estilo /ordenes: "Mostrando X–Y de Z" + números truncados */}
+          {totalRows > 0 && (
+            <div className={styles.pager}>
+              <span className={styles.pagerInfo}>
+                Mostrando {startIndex + 1}–{Math.min(totalRows, startIndex + paginatedFacturas.length)} de {totalRows}
+              </span>
 
-              {Array.from({ length: totalPages }, (_, idx) => {
-                const p = idx + 1;
-                return (
-                  <button
-                    key={p}
-                    className={
-                      p === currentPage
-                        ? `${styles.pageBtn} ${styles.pageBtnActive}`
-                        : styles.pageBtn
-                    }
-                    onClick={() => goToPage(p)}
-                  >
-                    {p}
-                  </button>
-                );
-              })}
+              <div className={styles.pagerNav}>
+                <button
+                  type="button"
+                  className={`${styles.pageBtn} ${styles.arrowBtn} ${
+                    currentPage === 1 ? styles.pageBtnDisabled : ''
+                  }`}
+                  onClick={() => goToPage(currentPage - 1)}
+                  disabled={currentPage === 1}
+                >
+                  «
+                </button>
 
-              <button
-                className={`${styles.pageBtn} ${styles.arrowBtn} ${
-                  currentPage === totalPages ? styles.pageBtnDisabled : ''
-                }`}
-                onClick={() => goToPage(currentPage + 1)}
-                disabled={currentPage === totalPages}
-              >
-                »
-              </button>
+                {pageNumbers().map((p, idx) =>
+                  p.ellipsis ? (
+                    <span key={`ellipsis-${p.key}-${idx}`} className={styles.ellipsis}>
+                      …
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      key={p.n}
+                      className={`${styles.pageBtn} ${p.active ? styles.pageBtnActive : ''}`}
+                      onClick={() => goToPage(p.n)}
+                    >
+                      {p.n}
+                    </button>
+                  )
+                )}
+
+                <button
+                  type="button"
+                  className={`${styles.pageBtn} ${styles.arrowBtn} ${
+                    currentPage === totalPages ? styles.pageBtnDisabled : ''
+                  }`}
+                  onClick={() => goToPage(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                >
+                  »
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </>
       )}
 
