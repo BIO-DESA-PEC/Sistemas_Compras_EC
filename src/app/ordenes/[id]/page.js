@@ -4,6 +4,11 @@ import { getOC } from "@/app/lib/backend";
 import OCEditor from "./ui/OCEditor";
 import styles from "./orden.module.css";
 
+function formatAuditDate(value) {
+  if (!value) return "Sin modificaciones";
+  return String(value).substring(0, 19).replace("T", " ");
+}
+
 export default async function OCDetailPage({ params }) {
   await auth();
 
@@ -32,6 +37,16 @@ export default async function OCDetailPage({ params }) {
             <span className={styles.metaItem}>
               <strong>Fecha:</strong>{" "}
               {cabecera.FechaCreacion?.substring(0, 19).replace("T", " ")}
+            </span>
+            <span className={styles.dot}>â€¢</span>
+            <span className={styles.metaItem} title={cabecera.UsuarioModificacionAdministrativo || ""}>
+              <strong>Última modificación Administrativo:</strong>{" "}
+              {formatAuditDate(cabecera.FechaModificacionAdministrativo)}
+            </span>
+            <span className={styles.dot}>â€¢</span>
+            <span className={styles.metaItem} title={cabecera.UsuarioModificacionData || ""}>
+              <strong>Última modificación Data:</strong>{" "}
+              {formatAuditDate(cabecera.FechaModificacionData)}
             </span>
           </div>
         </div>

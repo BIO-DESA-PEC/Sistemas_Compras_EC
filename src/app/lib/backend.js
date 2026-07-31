@@ -295,10 +295,13 @@ export async function previewPrefacturaOC(idOC, payload) {
   return data;
 }
 
-export async function persistFacturaSnapshotOC(idOC, docEntry, payload) {
+export async function persistFacturaSnapshotOC(idOC, docEntry, payload, userEmail = "") {
   return fetchJSON(apiUrl(`/api/oc/${idOC}/prefactura/preview/${docEntry}`), {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(userEmail ? { "X-User-Email": userEmail } : {}),
+    },
     body: JSON.stringify(payload),
   });
 }
@@ -612,10 +615,13 @@ export async function solicitarCambioProveedor(cardcode, payload) {
   return json;
 }
 
-export async function updateFacturaSapDraft(idOC, docEntry, payload) {
+export async function updateFacturaSapDraft(idOC, docEntry, payload, userEmail = "") {
   return fetchJSON(apiUrl(`/api/oc/${idOC}/prefactura/preview/${docEntry}`), {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(userEmail ? { "X-User-Email": userEmail } : {}),
+    },
     body: JSON.stringify(payload),
   });
 }

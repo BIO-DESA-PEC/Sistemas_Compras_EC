@@ -9,6 +9,7 @@
 .shell {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
+  width: 100%;
   max-width: 1440px;
   margin: 0 auto;
 }
@@ -20,7 +21,13 @@
 
 /* contenido principal */
 .main {
+  min-width: 0;
+  max-width: 100%;
   padding: 24px;
+}
+
+.backdrop {
+  display: none;
 }
 
 /* BOTÓN HAMBURGUESA */
@@ -61,4 +68,42 @@
 }
 .burgerOpen span:nth-child(3) {
   transform: translateY(-3px) rotate(-45deg);
+}
+
+@media (max-width: 900px) {
+  .shell,
+  .shellCollapsed {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .main {
+    width: 100%;
+    padding: 58px 14px 18px;
+  }
+
+  .backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    display: block;
+    border: 0;
+    background: rgba(15, 23, 42, 0.42);
+    cursor: default;
+  }
+
+  .burger {
+    z-index: 110;
+  }
+}
+
+@media (max-width: 480px) {
+  .main {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .burger {
+    top: 16px;
+    left: 14px;
+  }
 }

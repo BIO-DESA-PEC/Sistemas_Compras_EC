@@ -1703,16 +1703,6 @@ const handleVolver = () => {
         rolId={user?.RolId}
         modo="ordenes"
       />
-      <FacturaPreviewModal
-        open={previewOpen}
-        data={previewData}
-        onClose={() => setPreviewOpen(false)}
-        onUse={handleUseDraft}
-        modo="facturas_sap"
-        rolNombre={user?.RolNombre}
-        rolId={user?.RolId}
-        ocId={oc.IdOC}
-      />
       {provInfo && (
         <ProveedorInfoModal
           proveedor={provInfo}

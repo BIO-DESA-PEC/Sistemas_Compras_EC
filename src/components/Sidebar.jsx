@@ -15,10 +15,11 @@ import {
   CalendarRange,
   Settings2,
   CreditCard,
+  X,
 } from "lucide-react";
 import styles from "./sidebar.module.css";
 
-export default function Sidebar({ session, user, collapsed }) {
+export default function Sidebar({ session, user, collapsed, onClose }) {
   const rolNombre = (user?.RolNombre || "").trim().toUpperCase();
   const rolId = Number(user?.RolId);
 
@@ -67,6 +68,16 @@ export default function Sidebar({ session, user, collapsed }) {
         collapsed ? styles.sidebarCollapsed : ""
       }`}
     >
+      <button
+        className={styles.mobileClose}
+        type="button"
+        onClick={onClose}
+        aria-label="Cerrar menu"
+        title="Cerrar menu"
+      >
+        <X size={20} />
+      </button>
+
       <div className={styles.topBrand}>
         <div className={styles.brandDot}>BIO</div>
         <div className={styles.brandText}>

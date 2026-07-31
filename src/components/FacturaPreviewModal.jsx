@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
 import styles from './FacturaPreviewModal.module.css';
 import SearchSelect from '@/components/SearchSelect';
 import {
@@ -65,6 +66,9 @@ export default function FacturaPreviewModal({
   rolId = null,
   lockSoloGasto = false,
 }) {
+  const { data: session } = useSession();
+  const userEmail = session?.user?.email || "";
+  const auditArea = modo === "facturas_sap" ? "DATA" : "ADMINISTRATIVO";
   const [clase, setClase] = useState('SERVICIO');
   const [sending, setSending] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -953,6 +957,7 @@ await persistFacturaSnapshotOC(idOC, docEntryNV, {
     const hayDescuentoCabecera = totalDiscountNow > 0 || discountPercentNow > 0;
 
     const payload = {
+      AuditArea: auditArea,
       Cabecera: {
         CardCode: String(cabecera.CardCode || "").trim(),
         CardName: String(cabecera.CardName || "").trim(),
@@ -1030,10 +1035,10 @@ await persistFacturaSnapshotOC(idOC, docEntryNV, {
       await crearNuevoBorradorManual(payload);
       return;
     }
-    const sapResp = await updateFacturaSapDraft(idOC, docEntry, payload);
+    const sapResp = await updateFacturaSapDraft(idOC, docEntry, payload, userEmail);
     console.log("RESPUESTA UPDATE SAP =", sapResp);
 
-    const snapshotResp = await persistFacturaSnapshotOC(idOC, docEntry, payload);
+    const snapshotResp = await persistFacturaSnapshotOC(idOC, docEntry, payload, userEmail);
     console.log("RESPUESTA SNAPSHOT =", snapshotResp);
 
     const estadoResp = await updateOCState(idOC, {

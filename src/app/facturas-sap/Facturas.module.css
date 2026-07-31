@@ -1,6 +1,8 @@
 /* Facturas.module.css */
 
 .container {
+  width: 100%;
+  min-width: 0;
   padding: 24px;
 }
 
@@ -23,6 +25,7 @@
   display: flex;
   gap: 8px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .search {
@@ -95,14 +98,22 @@
   color: #9a3412;
 }
 
-.table {
+.tableWrap {
   width: 100%;
-  border-collapse: collapse;
-  background: #fff;
+  max-width: 100%;
+  overflow-x: auto;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
-  overflow: hidden;
+  background: #fff;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+  -webkit-overflow-scrolling: touch;
+}
+
+.table {
+  width: 100%;
+  min-width: 1160px;
+  border-collapse: collapse;
+  background: #fff;
 }
 
 .table th {
@@ -303,6 +314,23 @@
 }
 
 @media (max-width: 900px) {
+  .container {
+    padding: 0;
+  }
+
+  .headerRow,
+  .toolbar {
+    align-items: stretch;
+  }
+
+  .toolbar,
+  .search,
+  .filterSelect,
+  .btnSecondary {
+    width: 100%;
+    min-width: 0;
+  }
+
   .segmented {
     width: 100%;
   }
@@ -314,5 +342,11 @@
   .pager{
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .pagerNav {
+    max-width: 100%;
+    overflow-x: auto;
+    padding-bottom: 4px;
   }
 }

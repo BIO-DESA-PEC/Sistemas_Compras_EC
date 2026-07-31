@@ -734,3 +734,187 @@
   gap: 12px;
   align-items: center;
 }
+
+@media (max-width: 900px) {
+  .wrap {
+    min-width: 0;
+    gap: 14px;
+  }
+
+  .title {
+    font-size: 24px;
+    line-height: 1.2;
+  }
+
+  .subtitle {
+    font-size: 13px;
+  }
+
+  .headerActions,
+  .chipsGroup,
+  .dateFilter {
+    width: 100%;
+  }
+
+  .headerActions,
+  .dateFilter {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .headerActions > *,
+  .dateFilter input,
+  .dateFilter button {
+    width: 100%;
+  }
+
+  .chipsGroup {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .chip {
+    width: 100%;
+    min-width: 0;
+    padding-inline: 8px;
+  }
+
+  .card {
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .table {
+    overflow: visible;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 0;
+    min-width: 0;
+    margin-bottom: 12px;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    box-shadow: 0 8px 22px -18px rgba(15, 23, 42, 0.45);
+  }
+
+  .row.headerRow {
+    display: none;
+  }
+
+  .row > * {
+    position: relative;
+    min-width: 0;
+    min-height: 44px;
+    padding: 9px 12px 9px calc(38% + 12px);
+    border-bottom: 1px solid #eef2f7;
+    overflow-wrap: anywhere;
+  }
+
+  .row > *::before {
+    position: absolute;
+    top: 50%;
+    left: 12px;
+    width: calc(38% - 12px);
+    transform: translateY(-50%);
+    padding-right: 10px;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  .row > :nth-child(1)::before { content: "OC"; }
+  .row > :nth-child(2)::before { content: "Solicitud"; }
+  .row > :nth-child(3)::before { content: "Pre-OC"; }
+  .row > :nth-child(4)::before { content: "Solicito"; }
+  .row > :nth-child(5)::before { content: "Fecha"; }
+  .row > :nth-child(6)::before { content: "Estado"; }
+  .row > :nth-child(7)::before { content: "Draft SAP"; }
+  .row > :nth-child(8)::before { content: "Factura SAP"; }
+  .row > :nth-child(9)::before { content: "Cod. proveedor"; }
+  .row > :nth-child(10)::before { content: "Proveedor"; }
+  .row > :nth-child(11)::before { content: "Fecha pago"; }
+  .row > :nth-child(12)::before { content: "Comentario SAP"; }
+  .row > :nth-child(13)::before { content: "Numero OC"; }
+  .row > :nth-child(14)::before { content: "Estado SAP"; }
+  .row > :nth-child(15)::before { content: "Cambio estado"; }
+  .row > :nth-child(16)::before { content: "Total SAP"; }
+
+  .row > :last-child {
+    border-bottom: 0;
+  }
+
+  .ocContainer,
+  .stateCell,
+  .sapBox,
+  .numeroOcBox {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .badge,
+  .sapComment,
+  .numeroOcInput {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .actions {
+    position: static;
+    z-index: auto;
+    display: flex;
+    grid-template-columns: none;
+    justify-content: flex-end;
+    min-height: 58px;
+    padding: 8px 12px;
+    border-left: 0;
+    background: #f8fafc;
+    box-shadow: none;
+  }
+
+  .actionsH,
+  .headerRow,
+  .filterBox {
+    z-index: auto;
+  }
+
+  .actions::before {
+    position: static;
+    width: auto;
+    transform: none;
+    content: "Acciones";
+    margin-right: auto;
+  }
+
+  .iconBtn,
+  .facturarBtn {
+    width: 38px;
+    height: 38px;
+  }
+
+  .pager {
+    padding-inline: 0;
+  }
+
+  .pagerNav {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .filterPanel {
+    position: fixed;
+    inset: 50% auto auto 50%;
+    width: min(330px, calc(100vw - 24px));
+    max-width: calc(100vw - 24px);
+    transform: translate(-50%, -50%);
+  }
+}
