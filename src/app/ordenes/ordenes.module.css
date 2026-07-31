@@ -181,6 +181,8 @@
     120px
     190px
     220px
+    175px
+    175px
     160px
     110px
     170px
@@ -196,7 +198,7 @@
 
   align-items:center;
   column-gap:14px;
-  min-width:3120px;
+  min-width:3500px;
   padding:14px 18px;
   border-bottom:1px solid #e5e7eb;
   background:#fff;
@@ -835,17 +837,19 @@
   .row > :nth-child(3)::before { content: "Pre-OC"; }
   .row > :nth-child(4)::before { content: "Solicito"; }
   .row > :nth-child(5)::before { content: "Fecha"; }
-  .row > :nth-child(6)::before { content: "Estado"; }
-  .row > :nth-child(7)::before { content: "Draft SAP"; }
-  .row > :nth-child(8)::before { content: "Factura SAP"; }
-  .row > :nth-child(9)::before { content: "Cod. proveedor"; }
-  .row > :nth-child(10)::before { content: "Proveedor"; }
-  .row > :nth-child(11)::before { content: "Fecha pago"; }
-  .row > :nth-child(12)::before { content: "Comentario SAP"; }
-  .row > :nth-child(13)::before { content: "Numero OC"; }
-  .row > :nth-child(14)::before { content: "Estado SAP"; }
-  .row > :nth-child(15)::before { content: "Cambio estado"; }
-  .row > :nth-child(16)::before { content: "Total SAP"; }
+  .row > :nth-child(6)::before { content: "Ult. Administrativo"; }
+  .row > :nth-child(7)::before { content: "Ult. Data"; }
+  .row > :nth-child(8)::before { content: "Estado"; }
+  .row > :nth-child(9)::before { content: "Draft SAP"; }
+  .row > :nth-child(10)::before { content: "Factura SAP"; }
+  .row > :nth-child(11)::before { content: "Cod. proveedor"; }
+  .row > :nth-child(12)::before { content: "Proveedor"; }
+  .row > :nth-child(13)::before { content: "Fecha pago"; }
+  .row > :nth-child(14)::before { content: "Comentario SAP"; }
+  .row > :nth-child(15)::before { content: "Numero OC"; }
+  .row > :nth-child(16)::before { content: "Estado SAP"; }
+  .row > :nth-child(17)::before { content: "Cambio estado"; }
+  .row > :nth-child(18)::before { content: "Total SAP"; }
 
   .row > :last-child {
     border-bottom: 0;

@@ -18,11 +18,6 @@ const FacturaPreviewModal = dynamic(
 
 const PAGE_SIZE = 20;
 
-function formatAuditDate(value) {
-  if (!value) return "Pendiente";
-  return String(value).substring(0, 19).replace("T", " ");
-}
-
 export default function FacturasSAPPage() {
   const [facturas, setFacturas] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -273,8 +268,6 @@ export default function FacturasSAPPage() {
                 <th>Solicitud</th>
                 <th>Draft DocEntry</th>
                 <th>Estado</th>
-                <th>Últ. Administrativo</th>
-                <th>Últ. Data</th>
                 <th>Proveedor (SAP)</th>
                 <th>Total (SAP)</th>
                 <th>Gasto</th>
@@ -295,12 +288,6 @@ export default function FacturasSAPPage() {
                     <td>{f.IdSolicitud}</td>
                     <td>{f.DraftDocEntry}</td>
                     <td>{f.Estado}</td>
-                    <td title={f.UsuarioModificacionAdministrativo || ""}>
-                      {formatAuditDate(f.FechaModificacionAdministrativo)}
-                    </td>
-                    <td title={f.UsuarioModificacionData || ""}>
-                      {formatAuditDate(f.FechaModificacionData)}
-                    </td>
                     <td>{f.Proveedor || '—'}</td>
                     <td>
                       {Number(f.TotalSAP != null ? f.TotalSAP : f.DocTotal || 0)

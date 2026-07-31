@@ -5,6 +5,11 @@ import NumeroOrdenCompraCell from "./NumeroOrdenCompraCell";
 import EstadoSapCell from "./EstadoSapCell";
 import styles from "./ordenes.module.css";
 
+function formatAuditDate(value) {
+  if (!value) return "Pendiente";
+  return String(value).substring(0, 19).replace("T", " ");
+}
+
 export const dynamic = "force-dynamic";
 const PAGE_SIZE = 15;
 
@@ -281,6 +286,8 @@ export default async function OCListPage({ searchParams }) {
             <div>#Pre-OC</div>
             <div>Solicitó</div>
             <div>Fecha</div>
+            <div>Últ. Administrativo</div>
+            <div>Últ. Data</div>
             <div>Estado</div>
             <div>Draft SAP</div>
 
@@ -390,6 +397,13 @@ export default async function OCListPage({ searchParams }) {
 
                 <div>{r.SolicitanteNombre || "—"}</div>
                 <div>{r.Fecha ?? "—"}</div>
+
+                <div title={r.UsuarioModificacionAdministrativo || ""}>
+                  {formatAuditDate(r.FechaModificacionAdministrativo)}
+                </div>
+                <div title={r.UsuarioModificacionData || ""}>
+                  {formatAuditDate(r.FechaModificacionData)}
+                </div>
 
                 <div className={styles.stateCell}>
                   {(() => {
