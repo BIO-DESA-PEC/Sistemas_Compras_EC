@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { getOCList } from "@/app/lib/backend";
 import NumeroOrdenCompraCell from "./NumeroOrdenCompraCell";
 import EstadoSapCell from "./EstadoSapCell";
+import MonthlyOrderUnifier from "./MonthlyOrderUnifier";
 import styles from "./ordenes.module.css";
 
 function formatAuditDate(value) {
@@ -75,6 +76,7 @@ export default async function OCListPage({ searchParams }) {
     "PENDIENTE FACTURAR",
     "PROCESADA",
     "ANULADA",
+    "UNIFICADA",
     "RECHAZADA",
   ];
 
@@ -149,6 +151,8 @@ export default async function OCListPage({ searchParams }) {
           </div>
 
           <div className={styles.headerActions}>
+          <MonthlyOrderUnifier />
+
           <Link href="/ordenes/nueva" className={styles.newBtn}>
             + Nueva orden
           </Link>
@@ -371,9 +375,27 @@ export default async function OCListPage({ searchParams }) {
             paginated.map((r) => (
               <div key={r.IdOC} className={styles.row}>
                 <div className={styles.ocContainer}>
-                  <Link className={styles.link} href={`/ordenes/${r.IdOC}`}>
-                    #{r.IdOC}
-                  </Link>
+                  {r.EsMensual &&
+                  !r.EsConsolidadaMensual &&
+                  (r.EstadoVisual || r.Estado) === "GENERADA" ? (
+                    <input
+                      type="checkbox"
+                      name="idsOC"
+                      value={r.IdOC}
+                      form="monthly-orders-unify-form"
+                      className={styles.monthlyCheck}
+                      title="Seleccionar esta orden mensual para unificar"
+                      aria-label={`Seleccionar OC #${r.IdOC} para unificar`}
+                    />
+                  ) : null}
+
+                  {r.EsUnificada ? (
+                    <strong>#{r.IdOC}</strong>
+                  ) : (
+                    <Link className={styles.link} href={`/ordenes/${r.IdOC}`}>
+                      #{r.IdOC}
+                    </Link>
+                  )}
 
                   {r.EsAnticipo && (
                     <span
@@ -383,6 +405,27 @@ export default async function OCListPage({ searchParams }) {
                       }`}
                     >
                       ANTICIPO
+                    </span>
+                  )}
+
+                  {r.EsUnificada ? (
+                    <span className={styles.unificadaTag} title={r.ComentarioOC || "Orden unificada"}>
+                      UNIFICADA{r.IdOCConsolidada ? ` EN #${r.IdOCConsolidada}` : ""}
+                    </span>
+                  ) : r.EsConsolidadaMensual ? (
+                    <span className={styles.consolidadaTag} title={r.ComentarioOC || "Orden consolidada"}>
+                      CONSOLIDADA
+                    </span>
+                  ) : r.EsMensual && (
+                    <span
+                      className={styles.mensualTag}
+                      title={
+                        r.CategoriaMensual
+                          ? `Orden generada desde solicitud mensual: ${r.CategoriaMensual}`
+                          : "Orden generada desde una solicitud mensual"
+                      }
+                    >
+                      MENSUAL
                     </span>
                   )}
                 </div>
@@ -444,14 +487,14 @@ export default async function OCListPage({ searchParams }) {
                 <NumeroOrdenCompraCell
                   idOC={r.IdOC}
                   value={r.NumeroOrdenCompra}
-                  canEdit={canEditNumeroOrdenCompra}
+                  canEdit={canEditNumeroOrdenCompra && !r.EsUnificada}
                   userEmail={userEmail}
                 />
                 <EstadoSapCell
                       idOC={r.IdOC}
                       estadoInicial={r.EstadoSAP}
                       comentarioInicial={r.ComentarioSAP}
-                      canEdit={canEditEstadoSAP}
+                      canEdit={canEditEstadoSAP && !r.EsUnificada}
                       userEmail={userEmail}
                     />
                   <div className={styles.num}>
@@ -462,7 +505,11 @@ export default async function OCListPage({ searchParams }) {
                 </div>
 
                 <div className={styles.actions}>
-  {r.PendienteFacturar ? (
+  {r.EsUnificada ? (
+    <span className={styles.unifiedDisabled} title={r.ComentarioOC || "Orden unificada"}>
+      Sin acciones
+    </span>
+  ) : r.PendienteFacturar ? (
     <Link
       href={`/ordenes/${r.IdOC}?facturar=1`}
       className={styles.facturarBtn}
@@ -488,7 +535,7 @@ export default async function OCListPage({ searchParams }) {
     </Link>
   )}
 
-  <a
+  {!r.EsUnificada && <a
     href={`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/oc/${r.IdOC}/pdf`}
     target="_blank"
     rel="noopener"
@@ -496,9 +543,9 @@ export default async function OCListPage({ searchParams }) {
     title="Descargar orden de compra"
   >
     OC
-  </a>
+  </a>}
 
-  {r.FacturaAdjuntoId ? (
+  {!r.EsUnificada && (r.FacturaAdjuntoId ? (
     <a
       href={`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/oc/${r.IdOC}/factura/adjunto/${r.FacturaAdjuntoId}/download`}
       target="_blank"
@@ -516,7 +563,7 @@ export default async function OCListPage({ searchParams }) {
     >
       FAC
     </span>
-  )}
+  ))}
 </div>
               </div>
             ))

@@ -8,7 +8,7 @@ import {
   ListChecks,
   FileText,
   CheckSquare,
-  ClipboardList,
+  // ClipboardList, // Pre-órdenes ocultas temporalmente
   ShieldCheck,
   LogOut,
   Truck,
@@ -142,12 +142,13 @@ export default function Sidebar({ session, user, collapsed, onClose }) {
           </a>
         )}
 
+        {/* Oculto temporalmente: el flujo de preórdenes no se usará por ahora.
         {canSeePreordenes && (
           <a href="/preordenes" className={styles.item}>
             <ClipboardList size={18} />
             <span>Pre-órdenes de compra</span>
           </a>
-        )}
+        )} */}
 
         {canSeeProveedores && (
           <a href="/proveedores" className={styles.item}>

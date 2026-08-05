@@ -331,11 +331,28 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
   const onChangeCell = useCallback((idx, field, value) => {
     setDetalle((prev) => {
       const rows = [...prev];
+      const firstEditableIdx = rows.findIndex((row) => !row.__summary && !row.__provLocked);
+      const previousValue = rows[idx]?.[field];
       const next = { ...rows[idx], [field]: value };
       if (["Cantidad", "Precio", "Descuento", "IvaPct"].includes(field)) {
         next[field] = value === "" ? 0 : num(value);
       }
       rows[idx] = recalcRow(next);
+
+      // Los campos comunes digitados en la primera línea se heredan. Una
+      // línea que ya tenga un valor diferente se considera personalizada.
+      if (idx === firstEditableIdx && ["FechaNecesaria", "IvaPct"].includes(field)) {
+        rows.forEach((row, rowIdx) => {
+          if (
+            rowIdx !== idx &&
+            !row.__summary &&
+            !row.__provLocked &&
+            (row[field] === previousValue || row[field] === "" || row[field] == null)
+          ) {
+            rows[rowIdx] = recalcRow({ ...row, [field]: next[field] });
+          }
+        });
+      }
       return rows;
     });
   }, []);
@@ -343,15 +360,17 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
   const addRow = useCallback(() => {
     setDetalle((d) => {
       const r = [...d].reverse();
-      const lastProv = r.find((x) => (x.Proveedor || "").trim())?.Proveedor || "";
+      const lastProvRow = r.find((x) => (x.Proveedor || "").trim());
+      const lastProv = lastProvRow?.Proveedor || "";
       const lastFecha = r.find((x) => (x.FechaNecesaria || "").trim())?.FechaNecesaria || "";
       const lastIva = r.find((x) => x.IvaPct !== "" && x.IvaPct != null)?.IvaPct ?? IVA_PCT_DEFAULT;
       const nueva = recalcRow({
         ...EMPTY_ROW,
         Proveedor: lastProv,
+        ProveedorCardCode: lastProvRow?.ProveedorCardCode || "",
         FechaNecesaria: lastFecha,
         IvaPct: lastIva,
-        DiasPago: 0,
+        DiasPago: lastProvRow?.DiasPago ?? 0,
       });
       return [...d, nueva];
     });
@@ -449,13 +468,29 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
     // actualizamos el detalle (p. ej. Proveedor) sin volver a disparar
     // el flujo de aprobación (Jefe/CEO), porque ya no aplica.
     if (esAnticipo && ocAprob?.existe && ocAprob.estado === "APROBADA") {
-      await replaceOCDetail(oc.IdOC, detalle);
+      const guardado = await replaceOCDetail(oc.IdOC, detalle, session?.user?.email || "");
+      if (guardado?.split) {
+        for (const orden of guardado.created || []) {
+          if (orden.IdOC !== oc.IdOC) {
+            await requestOCApproval(orden.IdOC, { autoApprove: true });
+          }
+        }
+      }
       await refreshApprovalStatus();
-      alert("Datos del anticipo actualizados correctamente. La OC sigue aprobada.");
+      const nuevas = guardado?.created || [];
+      alert(
+        guardado?.split
+          ? `Detalle separado correctamente en ${nuevas.length} órdenes de compra: ${nuevas.map((x) => `#${x.IdOC}`).join(", ")}.`
+          : "Datos del anticipo actualizados correctamente. La OC sigue aprobada."
+      );
+      if (guardado?.split) router.push("/ordenes");
       return;
     }
 
-    await replaceOCDetail(oc.IdOC, detalle);
+    const guardado = await replaceOCDetail(oc.IdOC, detalle, session?.user?.email || "");
+    const ordenesGuardadas = guardado?.created?.length
+      ? guardado.created
+      : [{ IdOC: oc.IdOC, Proveedor: detalle[0]?.Proveedor || "" }];
 
     const autoApproveFinal = esMensual ? true : autoApprove;
 
@@ -463,11 +498,22 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
       ? { autoApprove: true }
       : { autoApprove: false, tipoAprobacion };
 
-    const r = await requestOCApproval(oc.IdOC, payload);
+    const respuestas = [];
+    for (const orden of ordenesGuardadas) {
+      respuestas.push(await requestOCApproval(orden.IdOC, payload));
+    }
+    const r = respuestas[0];
 
     await refreshApprovalStatus();
 
-    if (r?.estado === "APROBADA") {
+    if (guardado?.split) {
+      alert(
+        `Se crearon ${ordenesGuardadas.length} órdenes, una por proveedor: ${ordenesGuardadas
+          .map((x) => `#${x.IdOC} (${x.Proveedor || "proveedor"})`)
+          .join(", ")}.`
+      );
+      router.push("/ordenes");
+    } else if (r?.estado === "APROBADA") {
       alert(
         autoApproveFinal
           ? "Detalle guardado. La OC quedó lista para facturar."
@@ -606,7 +652,7 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
 
   const guardarPagoEncabezado = useCallback(async () => {
     try {
-      await updatePagoOC(oc.IdOC, { DiasPago: diasPago });
+      await updatePagoOC(oc.IdOC, { DiasPago: diasPago }, session?.user?.email || "");
       alert("Días de crédito (global) guardados.");
     } catch (e) {
       console.error(e);
@@ -721,11 +767,11 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
     await persistFacturaSnapshotOC(oc.IdOC, docEntry, {
       Cabecera: cab,
       Lineas: lineas,
-    });
+    }, session?.user?.email || "");
 
     // 3) Marcar OC como procesada
     if (estado !== "PROCESADA") {
-      await updateOCState(oc.IdOC, { estado: "PROCESADA" });
+      await updateOCState(oc.IdOC, { estado: "PROCESADA" }, session?.user?.email || "");
       setEstado("PROCESADA");
     }
 
@@ -803,7 +849,7 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
   const anularOC = useCallback(async () => {
     const motivo = prompt("Motivo de anulación (requerido):", "");
     if (!motivo) return;
-    await updateOCState(oc.IdOC, { estado: "ANULADA", comentario: motivo });
+    await updateOCState(oc.IdOC, { estado: "ANULADA", comentario: motivo }, session?.user?.email || "");
     alert("OC anulada. La solicitud fue reabierta.");
     router.push("/solicitudes");
   }, [oc.IdOC, router]);
@@ -1172,15 +1218,32 @@ const handleVolver = () => {
                         onChange={(nombre, proveedor) => {
                           setDetalle((prev) => {
                             const rows = [...prev];
-                            rows[i] = recalcRow({
-                              ...rows[i],
+                            const firstEditableIdx = rows.findIndex(
+                              (row) => !row.__summary && !row.__provLocked
+                            );
+                            const previousProvider = rows[i]?.Proveedor || "";
+                            const providerData = {
                               Proveedor: nombre || "",
                               ProveedorCardCode: proveedor?.CodigoSAP || "",
                               DiasPago:
                                 typeof proveedor?.DiasCredito === "number"
                                   ? proveedor.DiasCredito
                                   : (rows[i]?.DiasPago ?? 0),
-                            });
+                            };
+                            rows[i] = recalcRow({ ...rows[i], ...providerData });
+
+                            if (i === firstEditableIdx) {
+                              rows.forEach((row, rowIdx) => {
+                                if (
+                                  rowIdx !== i &&
+                                  !row.__summary &&
+                                  !row.__provLocked &&
+                                  (!(row.Proveedor || "").trim() || row.Proveedor === previousProvider)
+                                ) {
+                                  rows[rowIdx] = recalcRow({ ...row, ...providerData });
+                                }
+                              });
+                            }
                             return rows;
                           });
                         }}

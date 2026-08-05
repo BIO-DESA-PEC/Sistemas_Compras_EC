@@ -127,11 +127,14 @@ export async function updateOCHeader(id, payload) {
   return res.json();
 }
 
-export async function replaceOCDetail(id, detalle) {
+export async function replaceOCDetail(id, detalle, userEmail = "") {
   const url = apiUrl(`/api/oc/${id}/detalle`);
   const res = await fetch(url, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(userEmail ? { "X-User-Email": userEmail } : {}),
+    },
     cache: "no-store",
     body: JSON.stringify({ detalle }),
   });
@@ -139,11 +142,26 @@ export async function replaceOCDetail(id, detalle) {
   return res.json();
 }
 
-export async function updateOCState(idOC, body) {
+export async function unifyMonthlyOCs(idsOC) {
+  const url = apiUrl('/api/oc/unificar-mensuales');
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    cache: 'no-store',
+    body: JSON.stringify({ idsOC }),
+  });
+  if (!res.ok) throw new Error(await safeText(res));
+  return res.json();
+}
+
+export async function updateOCState(idOC, body, userEmail = "") {
   const url = apiUrl(`/api/oc/${idOC}/estado`);
   const res = await fetch(url, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(userEmail ? { "X-User-Email": userEmail } : {}),
+    },
     cache: "no-store",
     body: JSON.stringify(body),
   });
@@ -151,11 +169,14 @@ export async function updateOCState(idOC, body) {
   return res.json();
 }
 
-export async function updatePagoOC(idOC, payload) {
+export async function updatePagoOC(idOC, payload, userEmail = "") {
   const url = apiUrl(`/api/oc/${idOC}/pago`);
   const res = await fetch(url, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(userEmail ? { "X-User-Email": userEmail } : {}),
+    },
     cache: "no-store",
     body: JSON.stringify(payload),
   });

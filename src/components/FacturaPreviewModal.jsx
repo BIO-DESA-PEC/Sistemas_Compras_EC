@@ -924,7 +924,7 @@ await persistFacturaSnapshotOC(idOC, docEntryNV, {
     await updateOCState(idOC, {
       estado: "PROCESADA",
       comentario: payloadNV.Cabecera.Comments,
-    });
+    }, userEmail);
 
     alert(`✅ Nota de venta creada correctamente en SAP. Draft #${resp.DocEntry}`);
 
@@ -1044,7 +1044,7 @@ await persistFacturaSnapshotOC(idOC, docEntryNV, {
     const estadoResp = await updateOCState(idOC, {
       estado: "PROCESADA",
       comentario: commentsNow,
-    });
+    }, userEmail);
     console.log("RESPUESTA UPDATE ESTADO OC =", estadoResp);
 
     setCabecera((prev) => ({
@@ -1132,12 +1132,12 @@ async function crearNuevoBorradorManual(payloadManual = null) {
         ...payloadUsar.Cabecera,
         DocEntry: nuevoDocEntry,
       },
-    });
+    }, userEmail);
 
     await updateOCState(idOC, {
       estado: "PROCESADA",
       comentario: payloadUsar?.Cabecera?.Comments || "",
-    });
+    }, userEmail);
 
     alert(`✅ Nuevo borrador creado correctamente en SAP. Draft #${nuevoDocEntry}`);
 
@@ -1186,7 +1186,7 @@ async function handleCerrar() {
     await updateOCState(idOC, {
       estado: "PROCESADA",
       comentario,
-    });
+    }, userEmail);
     setBorradorGuardadoOk(true);
 alert("✅ Borrador actualizado correctamente en SAP y OC procesada");
 
