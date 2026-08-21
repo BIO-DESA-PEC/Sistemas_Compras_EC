@@ -2,10 +2,45 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Select from "react-select";
 import styles from "../usuarios/usuarios.module.css";
 
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL;
 const PAGE_SIZE = 20;
+const USERS_BATCH_SIZE = 200;
+
+const userSelectStyles = {
+  control: (base, state) => ({
+    ...base,
+    minHeight: 40,
+    borderRadius: 10,
+    borderColor: state.isFocused ? "#10a56b" : "#d1d5db",
+    boxShadow: state.isFocused ? "0 0 0 1px #10a56b" : "none",
+    fontSize: 14,
+    "&:hover": {
+      borderColor: state.isFocused ? "#10a56b" : "#9ca3af",
+    },
+  }),
+  menu: (base) => ({ ...base, zIndex: 60 }),
+};
+
+function UserSelect({ id, value, onChange, options, placeholder }) {
+  const selectedOption = options.find((option) => option.value === value) || null;
+
+  return (
+    <Select
+      inputId={id}
+      value={selectedOption}
+      onChange={(option) => onChange(option?.value || "")}
+      options={options}
+      placeholder={placeholder}
+      noOptionsMessage={() => "No se encontraron usuarios"}
+      isClearable
+      isSearchable
+      styles={userSelectStyles}
+    />
+  );
+}
 
 export default function DepartamentosClient() {
   const [deptos, setDeptos] = useState([]);
@@ -23,6 +58,11 @@ export default function DepartamentosClient() {
 
   const [page, setPage] = useState(1);
 
+  const userOptions = usuarios.map((u) => ({
+    value: String(u.Id),
+    label: u.Nombre,
+  }));
+
   const getNombreUsuario = (id) => {
     if (!id) return "";
     const u = usuarios.find((x) => x.Id === id);
@@ -37,9 +77,26 @@ export default function DepartamentosClient() {
   };
 
   const loadUsuarios = async () => {
-    const res = await fetch(`${API_BASE}/api/users`);
-    const data = await res.json();
-    setUsuarios(data || []);
+    const allUsers = [];
+    let offset = 0;
+
+    while (true) {
+      const res = await fetch(
+        `${API_BASE}/api/users?limit=${USERS_BATCH_SIZE}&offset=${offset}`
+      );
+
+      if (!res.ok) {
+        throw new Error("No se pudo cargar la lista de usuarios");
+      }
+
+      const batch = await res.json();
+      allUsers.push(...batch);
+
+      if (batch.length < USERS_BATCH_SIZE) break;
+      offset += USERS_BATCH_SIZE;
+    }
+
+    setUsuarios(allUsers);
   };
 
   useEffect(() => {
@@ -254,51 +311,36 @@ export default function DepartamentosClient() {
               onChange={(e) => setForm({ ...form, Nombre: e.target.value })}
             />
 
-            <label>Jefe</label>
-            <select
-              className={styles.input}
+            <label htmlFor="departamento-jefe">Jefe</label>
+            <UserSelect
+              id="departamento-jefe"
               value={form.JefeId}
-              onChange={(e) => setForm({ ...form, JefeId: e.target.value })}
-            >
-              <option value="">Sin jefe asignado</option>
-              {usuarios.map((u) => (
-                <option key={u.Id} value={u.Id}>
-                  {u.Nombre}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => setForm({ ...form, JefeId: value })}
+              options={userOptions}
+              placeholder="Sin jefe asignado"
+            />
 
-            <label>SubGerente</label>
-            <select
-              className={styles.input}
+            <label htmlFor="departamento-subgerente">SubGerente</label>
+            <UserSelect
+              id="departamento-subgerente"
               value={form.SubGerenteId}
-              onChange={(e) =>
-                setForm({ ...form, SubGerenteId: e.target.value })
+              onChange={(value) =>
+                setForm({ ...form, SubGerenteId: value })
               }
-            >
-              <option value="">Sin subgerente</option>
-              {usuarios.map((u) => (
-                <option key={u.Id} value={u.Id}>
-                  {u.Nombre}
-                </option>
-              ))}
-            </select>
+              options={userOptions}
+              placeholder="Sin subgerente"
+            />
 
-            <label>Gerente</label>
-            <select
-              className={styles.input}
+            <label htmlFor="departamento-gerente">Gerente</label>
+            <UserSelect
+              id="departamento-gerente"
               value={form.GerenteId}
-              onChange={(e) =>
-                setForm({ ...form, GerenteId: e.target.value })
+              onChange={(value) =>
+                setForm({ ...form, GerenteId: value })
               }
-            >
-              <option value="">Sin gerente</option>
-              {usuarios.map((u) => (
-                <option key={u.Id} value={u.Id}>
-                  {u.Nombre}
-                </option>
-              ))}
-            </select>
+              options={userOptions}
+              placeholder="Sin gerente"
+            />
 
             <div className={styles.modalFooter}>
               <button
