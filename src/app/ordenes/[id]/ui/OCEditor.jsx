@@ -818,7 +818,7 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
       return;
     }
     if (!upFile) {
-      alert("Selecciona un archivo (PDF/XML).");
+      alert("Selecciona un archivo (PDF, XML o Excel).");
       return;
     }
 
@@ -1623,10 +1623,10 @@ const handleVolver = () => {
               </label>
 
               <label className={styles.gridFull}>
-                <span>Archivo (PDF/XML)</span>
+                <span>Archivo (PDF, XML o Excel)</span>
                 <input
                   type="file"
-                  accept=".pdf,.xml,application/pdf,text/xml,application/xml"
+                  accept=".pdf,.xml,.xls,.xlsx,application/pdf,text/xml,application/xml,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                   onChange={(e) => setUpFile(e.target.files?.[0] || null)}
                 />
               </label>
