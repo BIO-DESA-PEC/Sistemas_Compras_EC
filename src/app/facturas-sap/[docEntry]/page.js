@@ -114,6 +114,8 @@ export default function FacturasSAPPage() {
     if (gastoFilter === 'all') return filteredFacturas;
 
     return filteredFacturas.filter((f) => {
+      if (gastoFilter === 'anulada') return !!f.Anulada;
+      if (f.Anulada) return false;
       const docEntry = Number(f?.DraftDocEntry);
       const hasGasto = Number.isFinite(docEntry) ? !!gastoByDraft[docEntry] : false;
 
@@ -246,6 +248,7 @@ export default function FacturasSAPPage() {
             <option value="all">Todos</option>
             <option value="sin">Sin gasto</option>
             <option value="con">Con gasto</option>
+            <option value="anulada">Anuladas</option>
           </select>
 
           <button type="button" className={styles.btnSecondary} onClick={loadFacturas}>
@@ -294,8 +297,8 @@ export default function FacturasSAPPage() {
                     <td>{f.DraftDocEntry}</td>
 
                     {/* ✅ NUEVO: indicador */}
-                    <td title={hasGasto ? "Con gasto registrado" : "Sin gasto"}>
-                      {hasGasto ? "✅" : "⛔"}
+                    <td title={f.Anulada ? "Anulada" : hasGasto ? "Con gasto registrado" : "Sin gasto"}>
+                      {f.Anulada ? "Anulada" : hasGasto ? "✅" : "⛔"}
                     </td>
 
                     <td>{f.Estado}</td>
