@@ -56,6 +56,32 @@
 .warn{ background:var(--warn-bg); color:var(--warn-text); border-color:var(--warn-border); }
 .warn:hover{ filter:brightness(.98); }
 
+.ghost{
+  height: var(--h);
+  padding: 0 12px;
+  border-radius: 10px;
+  font-weight:600;
+  border:1px solid transparent;
+  background:transparent;
+  color:var(--muted);
+  cursor:pointer;
+  transition: background .15s ease, color .15s ease;
+}
+.ghost:hover{ background:#f3f5f9; color:var(--text); }
+
+.dangerGhost{
+  height: var(--h);
+  padding: 0 12px;
+  border-radius: 10px;
+  font-weight:600;
+  border:1px solid var(--warn-border);
+  background:transparent;
+  color:var(--warn-text);
+  cursor:pointer;
+  transition: background .15s ease;
+}
+.dangerGhost:hover{ background:var(--warn-bg); }
+
 .stateSel{
   height: var(--h);
   border:1px solid var(--border);
@@ -102,6 +128,22 @@
   gap: 4px;
   min-width: 220px;
 }
+
+.backlink{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 0 0 6px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.backlink:hover{ color: var(--text); }
 
 .topLabel {
   font-size: 11px;
@@ -152,10 +194,123 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
   justify-content: flex-end;
   margin-left: auto;
 }
+
+.btnGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Botón + caret que abre un menú (Guardar ▾ / ⋯) */
+.split{
+  display: flex;
+  position: relative;
+}
+.split > button:first-child{
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.split > button + button{
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-left: 1px solid rgba(255,255,255,.35);
+  padding: 0 10px;
+}
+.split > button.secondary + button{
+  border-left-color: var(--border);
+}
+
+/* Trigger de un solo botón para un menú (sin partir el border-radius) */
+.menuTrigger{
+  position: relative;
+}
+
+.menu{
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 210px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 16px 36px rgba(16,24,40,.14);
+  padding: 6px;
+  z-index: 20;
+}
+.menuRight{ left: auto; right: 0; }
+.menu button{
+  display: flex;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 9px 10px;
+  border-radius: 7px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+}
+.menu button:hover{ background: #f3f5f9; }
+.menu hr{ border: none; border-top: 1px solid var(--border); margin: 5px 2px; }
+.menuDanger{ color: #b91c1c !important; }
+.menuDanger:hover{ background: var(--warn-bg) !important; }
+
+/* Riel de fases */
+.stepper{
+  display: flex;
+  align-items: center;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed #dbe3ea;
+}
+.stepGroup{
+  display: flex;
+  align-items: center;
+  flex: none;
+}
+.stepGroup:last-child{ flex: none; }
+.step{
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.stepDot{
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: var(--muted);
+  flex: none;
+}
+.stepDone .stepDot{ background: var(--brand); border-color: var(--brand); color: #fff; }
+.stepDone{ color: var(--text); }
+.stepNow .stepDot{ border-color: var(--brand-2); color: var(--brand-2); }
+.stepNow{ color: var(--text); }
+.stepSkip{ color: var(--muted); opacity: .55; }
+.stepSkip .stepDot{ border-style: dashed; }
+.stepTrack{
+  height: 2px;
+  width: 34px;
+  background: var(--border);
+  margin: 0 8px;
+  flex: none;
+}
+.stepTrackDone{ background: var(--brand); }
 
 /* fila 2: filtros / condiciones */
 .filtersRow {
@@ -208,6 +363,12 @@
   .topRowRight {
     width: 100%;
     justify-content: flex-start;
+  }
+  .sep {
+    display: none;
+  }
+  .stepper {
+    overflow-x: auto;
   }
   .filtersRight {
     justify-content: flex-start;
@@ -344,7 +505,33 @@
 /* proveedor combo */
 .proveedorWrapper {
   width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
+
+.viewInfoBtn{
+  flex: none;
+  width: 34px;
+  height: var(--h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+.viewInfoBtn:hover{
+  background: #f3f5f9;
+  color: var(--text);
+  border-color: #d6dbe3;
+}
+.eyeIcon{ display: flex; }
+.eyeIcon svg{ width: 16px; height: 16px; }
 
 /* estilo del botón del combo de proveedor */
 .proveedorWrapper :global(button[data-combo-toggle]) {

@@ -10,7 +10,8 @@ import {
   updateOCState,
   crearDraftNotaVentaOC,
   updateComentarioDraftOC,
-  crearBorradorManualOC
+  crearBorradorManualOC,
+  buscarFacturaSriOC,
 } from '@/app/lib/backend';
 import ProveedorPicker from "@/components/SupplierSelect";
 
@@ -56,6 +57,28 @@ function titleFromDim(code, list = []) {
     : v;
 }
 
+async function intentarAdjuntarFacturaSri(idOC, cab, userEmail) {
+  // Apenas se guarda el borrador, intentamos encontrar la factura sola en
+  // el SRI (mismo proveedor/número/fecha del borrador). Si el SRI falla,
+  // tarda o no encuentra nada, simplemente devolvemos false y el llamador
+  // cae al flujo manual de "Subir factura" — nunca debe bloquear el guardado.
+  try {
+    const est = t(cab?.Serie);
+    const pto = t(cab?.PtoEmi);
+    const sec = t(cab?.Secuencial);
+    const cardCode = t(cab?.CardCode);
+    const fecha = t(cab?.DocDate).slice(0, 10);
+
+    if (!idOC || !est || !sec || !cardCode || !fecha) return false;
+
+    const numeroFactura = pto ? `${est}-${pto}-${sec}` : `${est}-${sec}`;
+    const resp = await buscarFacturaSriOC(idOC, { cardCode, numeroFactura, fechaEmision: fecha }, userEmail);
+    return !!resp?.encontrado;
+  } catch {
+    return false;
+  }
+}
+
 export default function FacturaPreviewModal({
   open,
   data,
@@ -65,6 +88,7 @@ export default function FacturaPreviewModal({
   rolNombre = "",
   rolId = null,
   lockSoloGasto = false,
+  inline = false,
 }) {
   const { data: session } = useSession();
   const userEmail = session?.user?.email || "";
@@ -1065,14 +1089,22 @@ await persistFacturaSnapshotOC(idOC, docEntryNV, {
     setBorradorGuardadoOk(true);
     setFinalizado(true);
 
-    alert("✅ Borrador actualizado correctamente en SAP y OC procesada");
+    const encontradaEnSri = await intentarAdjuntarFacturaSri(idOC, payload.Cabecera, userEmail);
+
+    alert(
+      encontradaEnSri
+        ? "✅ Borrador actualizado correctamente en SAP y OC procesada. La factura se encontró y adjuntó automáticamente desde el SRI."
+        : "✅ Borrador actualizado correctamente en SAP y OC procesada. No se encontró la factura en el SRI: ahora podrás subirla manualmente."
+    );
 
     setTimeout(() => {
       if (typeof onClose === "function") {
         onClose();
       }
 
-      window.location.reload();
+      const url = new URL(window.location.href);
+      if (!encontradaEnSri) url.searchParams.set("subirFactura", "1");
+      window.location.href = url.pathname + url.search;
     }, 800);
 
     } catch (e) {
@@ -1139,15 +1171,27 @@ async function crearNuevoBorradorManual(payloadManual = null) {
       comentario: payloadUsar?.Cabecera?.Comments || "",
     }, userEmail);
 
-    alert(`✅ Nuevo borrador creado correctamente en SAP. Draft #${nuevoDocEntry}`);
-
     setPuedeCrearBorradorManual(false);
     setPayloadPendiente(null);
     setBorradorGuardadoOk(true);
     setFinalizado(true);
 
+    const encontradaEnSri = await intentarAdjuntarFacturaSri(
+      idOC,
+      { ...payloadUsar.Cabecera, DocEntry: nuevoDocEntry },
+      userEmail
+    );
+
+    alert(
+      encontradaEnSri
+        ? `✅ Nuevo borrador creado correctamente en SAP. Draft #${nuevoDocEntry}. La factura se encontró y adjuntó automáticamente desde el SRI.`
+        : `✅ Nuevo borrador creado correctamente en SAP. Draft #${nuevoDocEntry}. No se encontró la factura en el SRI: ahora podrás subirla manualmente.`
+    );
+
     if (typeof onClose === "function") onClose();
-    window.location.reload();
+    const url = new URL(window.location.href);
+    if (!encontradaEnSri) url.searchParams.set("subirFactura", "1");
+    window.location.href = url.pathname + url.search;
 
   } catch (e) {
     console.error("ERROR crearNuevoBorradorManual:", e);
@@ -1237,13 +1281,21 @@ async function actualizarSoloComentario() {
 }
 if (esNotaVenta) {
   return (
-    <div className={styles.modalOverlay} role="dialog" aria-modal="true">
-      <div className={styles.modalBox}>
+    <div className={inline ? styles.inlineWrap : styles.modalOverlay} role="dialog" aria-modal="true">
+      <div className={inline ? styles.inlineBox : styles.modalBox}>
         <div className={styles.modalHeader}>
           <div className={styles.titleRow}>
-            <h3 className={styles.modalTitle}>
-              Nota de venta · Crear preliminar
-            </h3>
+            <div className={styles.titleWithIcon}>
+              <span className={styles.titleIcon} aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M8 3h6l4 4v14H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
+                  <path d="M14 3v4h4" />
+                  <path d="M9 13h6M9 17h4" />
+                </svg>
+              </span>
+              <h3 className={styles.modalTitle}>Nota de venta</h3>
+              <span className={styles.docBadge}>Crear preliminar</span>
+            </div>
 
             <button
               type="button"
@@ -1529,13 +1581,21 @@ if (esNotaVenta) {
 }
 
 return (
-    <div className={styles.modalOverlay} role="dialog" aria-modal="true">
-      <div className={styles.modalBox}>
+    <div className={inline ? styles.inlineWrap : styles.modalOverlay} role="dialog" aria-modal="true">
+      <div className={inline ? styles.inlineBox : styles.modalBox}>
         <div className={styles.modalHeader}>
           <div className={styles.titleRow}>
-            <h3 className={styles.modalTitle}>
-              Factura de Proveedores · Borrador #{data.DocEntry}
-            </h3>
+            <div className={styles.titleWithIcon}>
+              <span className={styles.titleIcon} aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M8 3h6l4 4v14H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
+                  <path d="M14 3v4h4" />
+                  <path d="M9 13h6M9 17h4" />
+                </svg>
+              </span>
+              <h3 className={styles.modalTitle}>Factura de Proveedores</h3>
+              <span className={styles.docBadge}>Borrador #{data.DocEntry}</span>
+            </div>
             <button
               type="button"
               className={styles.closeX}

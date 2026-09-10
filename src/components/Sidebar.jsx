@@ -15,6 +15,7 @@ import {
   CalendarRange,
   Settings2,
   CreditCard,
+  FileSearch,
   X,
 } from "lucide-react";
 import styles from "./sidebar.module.css";
@@ -60,6 +61,8 @@ export default function Sidebar({ session, user, collapsed, onClose }) {
 
   const canSeeAprobaciones = isAdmin || isJefeTI;
   const canSeeFacturasSap = isAdmin || isData;
+  // Visible para cualquier usuario registrado en el sistema, sin restricción de rol.
+  const canSeeRepositorioFacturas = true;
   const canSeeAdminGeneral = isAdmin;
 
   return (
@@ -167,7 +170,8 @@ export default function Sidebar({ session, user, collapsed, onClose }) {
         {(canSeeTarjetasCredito ||
           canSeeAnticipos ||
           canSeeReportes ||
-          canSeeFacturasSap) && (
+          canSeeFacturasSap ||
+          canSeeRepositorioFacturas) && (
           <div className={styles.sectionLabel}>Finanzas</div>
         )}
 
@@ -196,6 +200,13 @@ export default function Sidebar({ session, user, collapsed, onClose }) {
           <a href="/facturas-sap" className={styles.item}>
             <FileText size={18} />
             <span>Facturas SAP</span>
+          </a>
+        )}
+
+        {canSeeRepositorioFacturas && (
+          <a href="/repositorio-facturas" className={styles.item}>
+            <FileSearch size={18} />
+            <span>Repositorio de facturas</span>
           </a>
         )}
 

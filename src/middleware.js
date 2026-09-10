@@ -13,6 +13,7 @@ const PROTECTED_PATHS = [
   "/tarjetas-credito",
   "/reportes",
   "/facturas-sap",
+  "/repositorio-facturas",
   "/aprobaciones",
   "/admin",
 ];
@@ -43,6 +44,7 @@ export const config = {
     "/tarjetas-credito/:path*",
     "/reportes/:path*",
     "/facturas-sap/:path*",
+    "/repositorio-facturas/:path*",
     "/aprobaciones/:path*",
     "/admin/:path*",
   ],

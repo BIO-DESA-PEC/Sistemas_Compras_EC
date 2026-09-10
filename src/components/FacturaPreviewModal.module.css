@@ -14,7 +14,7 @@
   --thead: #f3f4f6;
   --focus: #2563eb;
   --focusRing: #dbeafe;
-  --shadow: 0 18px 48px rgba(2,6,23,.16);
+  --shadow: 0 24px 64px rgba(2,6,23,.24), 0 2px 8px rgba(2,6,23,.08);
 }
 
 /* Overlay */
@@ -22,11 +22,23 @@
   position: fixed;
   inset: 0;
   background: rgba(15,23,42,.55);
+  backdrop-filter: blur(3px);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
   z-index: 60;
+  animation: fpmOverlayIn .15s ease-out;
+}
+
+@keyframes fpmOverlayIn{
+  from{ opacity: 0; }
+  to{ opacity: 1; }
+}
+
+@keyframes fpmModalIn{
+  from{ opacity: 0; transform: translateY(10px) scale(.98); }
+  to{ opacity: 1; transform: translateY(0) scale(1); }
 }
 
 /* Modal */
@@ -40,6 +52,52 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  animation: fpmModalIn .2s cubic-bezier(.16,1,.3,1);
+}
+
+/* ======= Variante inline (dentro de la pantalla de la OC, sin overlay) ======= */
+.inlineWrap{
+  --ctl-h: 40px;
+  --radius: 18px;
+  --radius-sm: 14px;
+  --bd: #e5e7eb;
+  --muted: #64748b;
+  --text: #0f172a;
+  --bg: #ffffff;
+  --panel: #f8fafc;
+  --thead: #f3f4f6;
+  --focus: #2563eb;
+  --focusRing: #dbeafe;
+  --shadow: 0 1px 2px rgba(16,24,40,.05), 0 4px 10px rgba(16,24,40,.05);
+  margin-top: 14px;
+}
+
+.inlineBox{
+  width: 100%;
+  height: auto;
+  background: var(--bg);
+  border: 1px solid var(--bd);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+}
+
+/* En modo inline no hay "ventana modal" a la cual pegarse: el header y el
+   footer dejan de ser sticky (si no, quedan flotando pegados al viewport,
+   desconectados de la tarjeta) y el footer pierde el blur/transparencia
+   que solo tenía sentido flotando sobre contenido detrás. */
+.inlineBox .modalHeader{
+  position: static;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
+.inlineBox .modalFooter{
+  position: static;
+  background: #fff;
+  backdrop-filter: none;
+  border-radius: 0 0 var(--radius) var(--radius);
 }
 
 /* Header */
@@ -47,9 +105,9 @@
   position: sticky;
   top: 0;
   z-index: 50;
-  background: #fff;
+  background: linear-gradient(180deg, #ffffff, #fbfcfe);
   border-bottom: 1px solid var(--bd);
-  padding: 14px 16px 12px 16px;
+  padding: 16px 18px 14px 18px;
 }
 
 .titleRow{
@@ -59,12 +117,47 @@
   gap: 12px;
 }
 
+.titleWithIcon{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.titleIcon{
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: linear-gradient(135deg, #eff6ff, #dbeafe);
+  color: var(--focus);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.titleIcon svg{
+  width: 20px;
+  height: 20px;
+}
+
 .modalTitle{
   margin: 0;
-  font-weight: 900;
+  font-weight: 700;
   color: var(--text);
   font-size: 1.18rem;
   letter-spacing: .01em;
+  white-space: nowrap;
+}
+
+.docBadge{
+  font-size: .78rem;
+  font-weight: 700;
+  color: var(--focus);
+  background: var(--focusRing);
+  padding: 4px 11px;
+  border-radius: 999px;
+  white-space: nowrap;
 }
 
 .closeX{
@@ -83,7 +176,9 @@
 }
 
 .closeX:hover{
-  background: var(--panel);
+  background: #fee2e2;
+  border-color: #fecaca;
+  color: #dc2626;
 }
 
 .inlineBar{
@@ -261,7 +356,7 @@
   display: flex;
   align-items: center;
   font-size: .78rem;
-  font-weight: 900;
+  font-weight: 700;
   color: #334155;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -397,7 +492,7 @@
   width: 100%;
   text-align: right;
   font-variant-numeric: tabular-nums;
-  font-weight: 900;
+  font-weight: 700;
   color: #0f172a;
 }
 
@@ -434,12 +529,13 @@
 
 /* Botones */
 .secondary{
-  border-radius: 999px;
-  padding: 10px 16px;
+  border-radius: 10px;
+  height: var(--ctl-h);
+  padding: 0 16px;
   border: 1px solid var(--bd);
   background: #fff;
   cursor: pointer;
-  font-weight: 800;
+  font-weight: 600;
   transition: all .15s ease;
 }
 
@@ -448,9 +544,10 @@
 }
 
 .primary{
-  border-radius: 999px;
-  padding: 10px 16px;
-  font-weight: 900;
+  border-radius: 10px;
+  height: var(--ctl-h);
+  padding: 0 16px;
+  font-weight: 700;
   cursor: pointer;
   border: 1px solid var(--focus);
   background: var(--focus);
@@ -551,6 +648,14 @@
     width: 98vw;
     height: 92vh;
     border-radius: 14px;
+  }
+
+  .titleRow{
+    flex-wrap: wrap;
+  }
+
+  .titleWithIcon{
+    flex-wrap: wrap;
   }
 
   .form2{
@@ -683,7 +788,7 @@
 .section h4{
   margin: 0 0 14px;
   font-size: .95rem;
-  font-weight: 900;
+  font-weight: 700;
   color: var(--text);
 }
 
@@ -773,7 +878,7 @@
   background: #f8fafc;
   color: #334155;
   font-size: .78rem;
-  font-weight: 900;
+  font-weight: 700;
   padding: 10px;
   border-bottom: 1px solid var(--bd);
   text-align: left;
@@ -840,7 +945,7 @@
   border: 1px solid #fecaca;
   background: #fef2f2;
   color: #dc2626;
-  font-weight: 900;
+  font-weight: 700;
   cursor: pointer;
 }
 

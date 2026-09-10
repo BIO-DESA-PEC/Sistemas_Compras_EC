@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useMemo, useState, useEffect, useCallback } from "react";
+import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   replaceOCDetail,
@@ -14,9 +14,11 @@ import {
   uploadFacturaAdjuntoOC,
   listFacturaAdjuntosOC,
   downloadFacturaAdjuntoOC,
+  downloadFacturaSriAdjuntoOC,
   getFacturaInfoOC,
   saveFacturaInfoOC,
-  persistFacturaSnapshotOC,
+  buscarFacturaSriOC,
+  facturaSriPdfUrl,
   getProveedorSapByCardCode,
   validarFacturaDuplicadaOC,
   createOCDirecta,
@@ -137,6 +139,10 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
   const [upSec, setUpSec] = useState("");
   const [upFile, setUpFile] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [sriFecha, setSriFecha] = useState("");
+  const [sriSearching, setSriSearching] = useState(false);
+  const [sriResultado, setSriResultado] = useState(null);
+  const [sriError, setSriError] = useState("");
 
   const [ocAprob, setOcAprob] = useState({
     existe: false,
@@ -180,6 +186,33 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
       ? "PENDIENTE_FACTURAR"
       : estado;
 
+  // Riel de fases (solo visual): no participa en ninguna condición de
+  // negocio, es una lectura de estado/ocAprob ya calculados arriba.
+  const FASES_ORDEN = ["borrador", "aprobacion", "facturacion", "procesada"];
+  const fasesInfo = useMemo(() => {
+    if (estado === "ANULADA" || estado === "RECHAZADA") return null;
+
+    let activa = "borrador";
+    if (estado === "PROCESADA") activa = "procesada";
+    else if (estadoUI === "PENDIENTE_FACTURAR") activa = "facturacion";
+    else if (estadoUI === "EN_APROBACION") activa = "aprobacion";
+
+    return {
+      activa,
+      fases: [
+        { key: "borrador", label: "Borrador" },
+        {
+          key: "aprobacion",
+          label: "Aprobación",
+          skip: !ocAprob?.existe,
+          skipLabel: esMensual ? "Mensual, autoaprobada" : "Sin aprobación",
+        },
+        { key: "facturacion", label: "Facturación" },
+        { key: "procesada", label: "Procesada" },
+      ],
+    };
+  }, [estado, estadoUI, ocAprob?.existe, esMensual]);
+
   const [priceMode, setPriceMode] = useState("LINEA");
   const [provTotalTarget, setProvTotalTarget] = useState("");
   const [provTotalMonto, setProvTotalMonto] = useState("");
@@ -191,6 +224,23 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
   const [factPtoEmi, setFactPtoEmi] = useState("");
   const [factSecu, setFactSecu] = useState("");
   const [sending, setSending] = useState(false);
+  const [savingDetail, setSavingDetail] = useState(false);
+  const [anulando, setAnulando] = useState(false);
+
+  // Menús desplegables de la barra de acciones (guardar / más acciones).
+  const [guardarMenuOpen, setGuardarMenuOpen] = useState(false);
+  const [masMenuOpen, setMasMenuOpen] = useState(false);
+  const actionsRef = useRef(null);
+  useEffect(() => {
+    function onClickOutside(e) {
+      if (actionsRef.current && !actionsRef.current.contains(e.target)) {
+        setGuardarMenuOpen(false);
+        setMasMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
 
   const refreshApprovalStatus = useCallback(async () => {
     try {
@@ -439,6 +489,7 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
   }, [editable, provTotalMonto, provTotalTarget]);
 
   const saveDetail = useCallback(async ({ autoApprove = false, tipoAprobacion = "JEFE" } = {}) => {
+  setSavingDetail(true);
   try {
     if (esOCDirecta) {
       const usuarioId = user?.Id || user?.id || user?.IdUsuario || null;
@@ -532,6 +583,8 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
   } catch (e) {
     console.error(e);
     alert("Error guardando detalle: " + (e?.message || e));
+  } finally {
+    setSavingDetail(false);
   }
 }, [
   detalle,
@@ -557,54 +610,55 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
   }, [detalle]);
 
   const mandarAFacturar = useCallback(async (modo = "NORMAL") => {
+    setSending(true);
     try {
-      const st = await getOCApprovalStatus(oc.IdOC);
+      try {
+        const st = await getOCApprovalStatus(oc.IdOC);
 
-      if (st?.existe && st.estado !== "APROBADA") {
-        alert("Para facturar, la OC debe estar aprobada.");
+        if (st?.existe && st.estado !== "APROBADA") {
+          alert("Para facturar, la OC debe estar aprobada.");
+          return;
+        }
+      } catch {}
+
+      setFactMode(modo);
+
+      const t = String(oc?.Tipo || "").trim().toUpperCase();
+      if (t !== "SERVICIO" && t !== "ARTICULO") {
+        alert("La OC no tiene Tipo válido (SERVICIO/ARTICULO).");
         return;
       }
-    } catch {}
 
-    setFactMode(modo);
+      setFactTipo(t);
 
-    const t = String(oc?.Tipo || "").trim().toUpperCase();
-    if (t !== "SERVICIO" && t !== "ARTICULO") {
-      alert("La OC no tiene Tipo válido (SERVICIO/ARTICULO).");
-      return;
-    }
+      const prov = getProveedorPrincipal();
 
-    setFactTipo(t);
+      if (!factProveedorNom && prov?.nombre) {
+        setFactProveedorNom(prov.nombre);
+      }
+      if (!factCardCode && prov?.cardCode) {
+        setFactCardCode(prov.cardCode);
+      }
 
-    const prov = getProveedorPrincipal();
+      const est = (factEstable || "").trim();
+      const pto = (factPtoEmi || "").trim();
+      const sec = (factSecu || "").trim();
+      const card = (factCardCode || prov?.cardCode || "").trim();
 
-    if (!factProveedorNom && prov?.nombre) {
-      setFactProveedorNom(prov.nombre);
-    }
-    if (!factCardCode && prov?.cardCode) {
-      setFactCardCode(prov.cardCode);
-    }
-
-    const est = (factEstable || "").trim();
-    const pto = (factPtoEmi || "").trim();
-    const sec = (factSecu || "").trim();
-    const card = (factCardCode || prov?.cardCode || "").trim();
-
-    if (est && pto && sec) {
+      if (est && pto && sec) {
         const dup = await validarFacturaDuplicadaOC({
-        establecimiento: est,
-        puntoEmision: pto,
-        secuencial: sec,
-        cardCode: card,
-        excludeIdOC: oc.IdOC,
-      });
+          establecimiento: est,
+          puntoEmision: pto,
+          secuencial: sec,
+          cardCode: card,
+          excludeIdOC: oc.IdOC,
+        });
 
         if (dup?.existe) {
           alert(dup?.mensaje || `La factura ${est}-${pto}-${sec} ya está registrada en otra OC.`);
           return;
         }
-      setSending(true);
-      try {
+
         const prev = await previewPrefacturaOC(oc.IdOC, {
           Establecimiento: est,
           PuntoEmision: pto,
@@ -633,21 +687,21 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
 
           alert((prev && prev.mensaje) || "No se encontró el borrador en SAP.");
           return;
-  }
+        }
 
         setPreviewData(prev);
         setFacturaCabecera(prev?.Cabecera || null);
         setFacturaDetalle(Array.isArray(prev?.Lineas) ? prev.Lineas : []);
         setPreviewOpen(true);
-      } catch (e) {
-        alert("Error en preview: " + (e?.message || e));
-      } finally {
-        setSending(false);
+        return;
       }
-      return;
-    }
 
-    setShowFacturaForm(true);
+      setShowFacturaForm(true);
+    } catch (e) {
+      alert("Error en preview: " + (e?.message || e));
+    } finally {
+      setSending(false);
+    }
   }, [oc.IdOC, oc?.Tipo, factEstable, factPtoEmi, factSecu, factCardCode, factProveedorNom, getProveedorPrincipal]);
 
   const guardarPagoEncabezado = useCallback(async () => {
@@ -742,57 +796,6 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
     }
   }, [factEstable, factPtoEmi, factSecu, factCardCode, factProveedorNom, getProveedorPrincipal, oc.IdOC]);
 
-  const handleUseDraft = useCallback(async () => {
-  try {
-    const docEntry = previewData?.DocEntry;
-    const cab = previewData?.Cabecera;
-    const lineas = previewData?.Lineas || [];
-
-    if (!docEntry || !cab) {
-      alert("No existe información del borrador para guardar.");
-      return;
-    }
-
-    // 1) Guardar identificación de factura
-    if (factEstable && factPtoEmi && factSecu) {
-      await saveFacturaInfoOC(oc.IdOC, {
-        Establecimiento: factEstable,
-        PuntoEmision: factPtoEmi,
-        Secuencial: factSecu,
-        ProveedorCardCode: factCardCode || "",
-      });
-    }
-
-    // 2) Persistir snapshot completo en HANA
-    await persistFacturaSnapshotOC(oc.IdOC, docEntry, {
-      Cabecera: cab,
-      Lineas: lineas,
-    }, session?.user?.email || "");
-
-    // 3) Marcar OC como procesada
-    if (estado !== "PROCESADA") {
-      await updateOCState(oc.IdOC, { estado: "PROCESADA" }, session?.user?.email || "");
-      setEstado("PROCESADA");
-    }
-
-    // 4) Reflejar en UI
-    setFacturaCabecera({
-      ...cab,
-      DocEntry: docEntry,
-    });
-    setFacturaDetalle(lineas);
-
-    setShowUploadFactura(true);
-
-    alert("OC PROCESADA. Ahora debe subir la factura obligatoriamente.");
-  } catch (e) {
-    alert("Se encontró el borrador, pero hubo error al guardar: " + (e?.message || e));
-  } finally {
-    setPreviewOpen(false);
-    setPreviewData(null);
-  }
-}, [estado, oc.IdOC, factEstable, factPtoEmi, factSecu, factCardCode, previewData]);
-
   const cancelarPrefactura = useCallback(() => {
     setShowFacturaForm(false);
     setFactTipo(null);
@@ -803,8 +806,56 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
     setUpPto((factPtoEmi || "").trim());
     setUpSec((factSecu || "").trim());
     setUpFile(null);
+    setSriFecha("");
+    setSriResultado(null);
+    setSriError("");
     setShowUploadFactura(true);
   }, [factEstable, factPtoEmi, factSecu]);
+
+  const buscarEnSRI = useCallback(async () => {
+    const est = (upEst || "").trim();
+    const pto = (upPto || "").trim();
+    const sec = (upSec || "").trim();
+
+    if (!est || !pto || !sec) {
+      alert("Completa Establecimiento, Punto de Emisión y Secuencial.");
+      return;
+    }
+    if (!sriFecha) {
+      alert("Indica la fecha de emisión de la factura.");
+      return;
+    }
+    if (!factCardCode) {
+      alert("Esta OC no tiene un proveedor SAP asociado; no se puede buscar en el SRI.");
+      return;
+    }
+
+    setSriSearching(true);
+    setSriError("");
+    setSriResultado(null);
+    try {
+      const numeroFactura = `${est}-${pto}-${sec}`;
+      const resp = await buscarFacturaSriOC(
+        oc.IdOC,
+        { cardCode: factCardCode, numeroFactura, fechaEmision: sriFecha },
+        session?.user?.email
+      );
+
+      if (!resp?.encontrado) {
+        setSriError(resp?.mensaje || "No se encontró esa factura en el SRI.");
+        return;
+      }
+
+      setSriResultado(resp);
+
+      const a = await listFacturaAdjuntosOC(oc.IdOC);
+      setAdjuntosFactura(Array.isArray(a) ? a : []);
+    } catch (e) {
+      setSriError(e?.message || "No se pudo consultar el SRI.");
+    } finally {
+      setSriSearching(false);
+    }
+  }, [upEst, upPto, upSec, sriFecha, factCardCode, oc.IdOC, session?.user?.email]);
 
   const subirFactura = useCallback(async () => {
     if (!oc?.IdOC) return;
@@ -849,10 +900,26 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
   const anularOC = useCallback(async () => {
     const motivo = prompt("Motivo de anulación (requerido):", "");
     if (!motivo) return;
-    await updateOCState(oc.IdOC, { estado: "ANULADA", comentario: motivo }, session?.user?.email || "");
-    alert("OC anulada. La solicitud fue reabierta.");
-    router.push("/solicitudes");
-  }, [oc.IdOC, router]);
+
+    setAnulando(true);
+    try {
+      await updateOCState(oc.IdOC, { estado: "ANULADA", comentario: motivo }, session?.user?.email || "");
+      alert("OC anulada. La solicitud fue reabierta.");
+      router.push("/solicitudes");
+    } catch (e) {
+      let mensaje = e?.message || "No se pudo anular la OC.";
+      try {
+        const parsed = JSON.parse(mensaje);
+        mensaje = parsed?.error || mensaje;
+      } catch {
+        // El backend no siempre responde JSON puro; si no se puede parsear,
+        // se muestra el texto tal cual.
+      }
+      alert(`No se pudo anular: ${mensaje}`);
+    } finally {
+      setAnulando(false);
+    }
+  }, [oc.IdOC, router, session?.user?.email]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -865,6 +932,21 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
       }
     }
   }, [mandarAFacturar]);
+
+  // Al guardar el borrador, si no se encontró la factura automáticamente en
+  // el SRI, el modal recarga la página con ?subirFactura=1 para que se abra
+  // directo el diálogo de carga manual (ver FacturaPreviewModal.jsx).
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const sp = new URLSearchParams(window.location.search);
+      if (sp.get("subirFactura") === "1") {
+        openUploadFactura();
+        const url = new URL(window.location.href);
+        url.searchParams.delete("subirFactura");
+        window.history.replaceState({}, "", url.pathname + url.search);
+      }
+    }
+  }, [openUploadFactura]);
 const cargarProveedor = useCallback(async (cardCode) => {
   try {
     if (!cardCode) {
@@ -892,6 +974,7 @@ const puedeFacturar =
   );
 
   const mandarAFacturarNotaVenta = useCallback(async () => {
+  setSending(true);
   try {
     const st = await getOCApprovalStatus(oc.IdOC);
 
@@ -899,7 +982,9 @@ const puedeFacturar =
       alert("Para facturar, la OC debe estar aprobada.");
       return;
     }
-  } catch {}
+  } catch {} finally {
+    setSending(false);
+  }
 
   setFactTipo("NOTA_VENTA");
   setFactMode("NOTA_VENTA");
@@ -968,6 +1053,13 @@ const handleVolver = () => {
       <div className={styles.topSection}>
         <div className={styles.topRow}>
           <div className={styles.topRowLeft}>
+            <button type="button" className={styles.backlink} onClick={handleVolver}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15">
+                <path d="M19 12H5M11 18l-6-6 6-6" />
+              </svg>
+              Órdenes de compra
+            </button>
+
             <span className={styles.topLabel}>Total orden</span>
             <div className={styles.topTotal}>
               {totals.tot.toLocaleString("es-EC", {
@@ -1019,130 +1111,185 @@ const handleVolver = () => {
             </div>
           </div>
 
-          <div className={styles.topRowRight}>
+          <div className={styles.topRowRight} ref={actionsRef}>
+            {editable && (
+              <button className={styles.secondary} onClick={addRow}>
+                + Línea
+              </button>
+            )}
+
             {editable ? (
-  <>
-    <button className={styles.secondary} onClick={addRow}>
-      Agregar línea
-    </button>
+              esAnticipo && ocAprob?.existe && ocAprob.estado === "APROBADA" ? (
+                // Anticipo ya aprobado: solo permitimos actualizar (p. ej. Proveedor)
+                // sin volver a disparar el flujo de aprobación de Jefe/CEO.
+                <button
+                  className={styles.primary}
+                  onClick={() => saveDetail({ autoApprove: true })}
+                  disabled={savingDetail}
+                  title="Anticipo ya aprobado: se actualiza el detalle/proveedor sin reabrir aprobación"
+                >
+                  {savingDetail ? "Guardando…" : "Guardar cambios (Anticipo)"}
+                </button>
+              ) : esMensual ? (
+                <button
+                  className={styles.primary}
+                  onClick={() => saveDetail({ autoApprove: true })}
+                  disabled={savingDetail}
+                  title="OC mensual: no requiere aprobación de Jefe ni CEO"
+                >
+                  {savingDetail ? "Guardando…" : "Guardar detalle"}
+                </button>
+              ) : (
+                <div className={styles.split}>
+                  <button
+                    className={styles.primary}
+                    onClick={() => saveDetail({ autoApprove: false, tipoAprobacion: "JEFE" })}
+                    disabled={savingDetail}
+                  >
+                    {savingDetail ? "Guardando…" : "Guardar (enviar a Jefe)"}
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.primary}
+                    onClick={() => setGuardarMenuOpen((v) => !v)}
+                    disabled={savingDetail}
+                    aria-label="Más opciones para guardar"
+                    title="Más opciones para guardar"
+                  >
+                    ▾
+                  </button>
 
-    {esAnticipo && ocAprob?.existe && ocAprob.estado === "APROBADA" ? (
-      // Anticipo ya aprobado: solo permitimos actualizar (p. ej. Proveedor)
-      // sin volver a disparar el flujo de aprobación de Jefe/CEO.
-      <button
-        className={styles.primary}
-        onClick={() => saveDetail({ autoApprove: true })}
-        title="Anticipo ya aprobado: se actualiza el detalle/proveedor sin reabrir aprobación"
-      >
-        Guardar cambios (Anticipo)
-      </button>
-    ) : esMensual ? (
-      <button
-        className={styles.primary}
-        onClick={() => saveDetail({ autoApprove: true })}
-        title="OC mensual: no requiere aprobación de Jefe ni CEO"
-      >
-        Guardar detalle
-      </button>
-    ) : (
-      <>
-        <button
-          className={styles.primary}
-          onClick={() => saveDetail({ autoApprove: false, tipoAprobacion: "JEFE" })}
-        >
-          Guardar detalle (enviar a Jefe)
-        </button>
-
-        <button
-          className={styles.secondary}
-          onClick={() => saveDetail({ autoApprove: false, tipoAprobacion: "CEO" })}
-          title="Enviar a aprobación de CEO"
-        >
-          Enviar a CEO
-        </button>
-
-<button
-  className={styles.secondary}
-  onClick={() => saveDetail({ autoApprove: true })}
-  title={
-    esOCDirecta
-      ? "OC directa: crea solicitud, preorden y OC"
-      : "Sin aprobación, queda lista para facturar"
-  }
->
-  {esOCDirecta ? "Guardar OC directa" : "Guardar detalle (sin aprobación)"}
-</button>      </>
-    )}
-  </>
-) : (
-  <span className={styles.muted}>Edición bloqueada</span>
-)}
+                  {guardarMenuOpen && (
+                    <div className={styles.menu}>
+                      <button
+                        onClick={() => {
+                          setGuardarMenuOpen(false);
+                          saveDetail({ autoApprove: false, tipoAprobacion: "CEO" });
+                        }}
+                      >
+                        Enviar a CEO
+                      </button>
+                      <button
+                        onClick={() => {
+                          setGuardarMenuOpen(false);
+                          saveDetail({ autoApprove: true });
+                        }}
+                      >
+                        {esOCDirecta ? "Guardar OC directa" : "Guardar detalle (sin aprobación)"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )
+            ) : estado !== "PROCESADA" ? (
+              <span className={styles.muted}>Edición bloqueada</span>
+            ) : null}
 
             {estado === "PROCESADA" && (
-  <>
-    {facturaCabecera?.DocEntry && (
-      <button
-        className={styles.secondary}
-        onClick={() => {
-          setPreviewData({
-            IdOC: ocId,
-            OcId: ocId,
-            DocEntry: facturaCabecera.DocEntry,
-            TipoOC: tipoOC || "SERVICIO",
-            EsNotaVenta: false,
-            Cabecera: facturaCabecera,
-            Lineas: facturaDetalle || [],
-            SoloComentario: true,
-          });
-          setPreviewOpen(true);
-        }}
-      >
-        Actualizar comentario
-      </button>
-    )}
-
-    <button
-      className={styles.primary}
-      onClick={openUploadFactura}
-    >
-      Subir factura
-    </button>
-  </>
-)}
-
-            <button className={styles.warn} onClick={anularOC}>
-              Anular
-            </button>
+              <button className={styles.primary} onClick={openUploadFactura}>
+                Subir factura
+              </button>
+            )}
 
             {puedeFacturar && (
-  <>
-    <button
-      className={styles.ok}
-      onClick={() => mandarAFacturar("NORMAL")}
-      title="Buscar factura/preliminar existente en SAP"
-    >
-      Facturar
-    </button>
+              <button
+                className={styles.ok}
+                onClick={() => mandarAFacturar("NORMAL")}
+                disabled={sending}
+                title="Buscar factura/preliminar existente en SAP"
+              >
+                {sending ? "Procesando…" : "Facturar"}
+              </button>
+            )}
 
-    <button
-      className={styles.secondary}
-      onClick={mandarAFacturarNotaVenta}
-      title="Crear borrador desde nota de venta"
-    >
-      Facturar nota de venta
-    </button>
-    
-  </>
-)}
-<button
-  type="button"
-  className={styles.secondary}
-  onClick={handleVolver}
->
-  ← Volver
-</button>
+            <div className={styles.menuTrigger}>
+              <button
+                type="button"
+                className={styles.secondary}
+                onClick={() => setMasMenuOpen((v) => !v)}
+                disabled={sending || anulando}
+                title="Más acciones"
+              >
+                {anulando ? "Anulando…" : sending ? "Procesando…" : (<>Más <span aria-hidden="true">▾</span></>)}
+              </button>
+
+              {masMenuOpen && (
+                <div className={`${styles.menu} ${styles.menuRight}`}>
+                  {puedeFacturar && (
+                    <button
+                      onClick={() => {
+                        setMasMenuOpen(false);
+                        mandarAFacturarNotaVenta();
+                      }}
+                    >
+                      Facturar nota de venta
+                    </button>
+                  )}
+
+                  {estado === "PROCESADA" && facturaCabecera?.DocEntry && (
+                    <button
+                      onClick={() => {
+                        setMasMenuOpen(false);
+                        setPreviewData({
+                          IdOC: ocId,
+                          OcId: ocId,
+                          DocEntry: facturaCabecera.DocEntry,
+                          TipoOC: tipoOC || "SERVICIO",
+                          EsNotaVenta: false,
+                          Cabecera: facturaCabecera,
+                          Lineas: facturaDetalle || [],
+                          SoloComentario: true,
+                        });
+                        setPreviewOpen(true);
+                      }}
+                    >
+                      Actualizar comentario
+                    </button>
+                  )}
+
+                  <hr />
+
+                  <button
+                    className={styles.menuDanger}
+                    onClick={() => {
+                      setMasMenuOpen(false);
+                      anularOC();
+                    }}
+                  >
+                    Anular OC
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
+
+        {fasesInfo && (
+          <div className={styles.stepper}>
+            {fasesInfo.fases.map((f, i) => {
+              const activeIdx = FASES_ORDEN.indexOf(fasesInfo.activa);
+              const idx = FASES_ORDEN.indexOf(f.key);
+              const isDone = idx < activeIdx;
+              const isNow = idx === activeIdx;
+
+              return (
+                <div className={styles.stepGroup} key={f.key}>
+                  <div
+                    className={`${styles.step} ${isDone ? styles.stepDone : ""} ${
+                      isNow ? styles.stepNow : ""
+                    } ${f.skip ? styles.stepSkip : ""}`}
+                  >
+                    <span className={styles.stepDot}>{isDone ? "✓" : i + 1}</span>
+                    {f.skip ? (f.skipLabel || `${f.label} no aplica`) : f.label}
+                  </div>
+                  {i < fasesInfo.fases.length - 1 && (
+                    <div className={`${styles.stepTrack} ${isDone ? styles.stepTrackDone : ""}`} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className={styles.tableWrapper}>
@@ -1211,7 +1358,7 @@ const handleVolver = () => {
                   <span className={styles.inputReadonly}>{r.Proveedor || "—"}</span>
                 ) : (
                   <div className={styles.proveedorWrapper}>
-                    <div style={{ width: "100%" }}>
+                    <div style={{ flex: "1 1 auto", minWidth: 0 }}>
                       <ProveedorPicker
                         disabled={!editable}
                         value={r.Proveedor || ""}
@@ -1256,7 +1403,12 @@ const handleVolver = () => {
                       title="Ver información del proveedor"
                       onClick={() => cargarProveedor(r.ProveedorCardCode)}
                     >
-                      <span className={styles.eyeIcon}>👁️</span>
+                      <span className={styles.eyeIcon}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+                          <circle cx="12" cy="12" r="3" />
+                        </svg>
+                      </span>
                     </button>
                   </div>
                 )}
@@ -1395,7 +1547,7 @@ const handleVolver = () => {
         </div>
       </div>
 
-      {facturaCabecera && (
+      {facturaCabecera && estado === "PROCESADA" && (
         <div className={styles.card} style={{ marginTop: 14 }}>
           <div className={styles.sectionTitle}>Factura SAP asociada</div>
           {facturaObligatoria && (
@@ -1526,14 +1678,19 @@ const handleVolver = () => {
                 <div>
                   <div className={styles.attachName}>{a.FileName}</div>
                   <div className={styles.attachMeta}>
-                    {a.CreatedAt ? `Subido: ${a.CreatedAt}` : ""}
+                    {a.Tipo === "FACTURA_SRI" ? "Encontrado en el SRI" : "Subido manualmente"}
+                    {a.CreatedAt ? ` · ${a.CreatedAt}` : ""}
                     {a.CreatedBy ? ` · por ${a.CreatedBy}` : ""}
                   </div>
                 </div>
 
                 <a
                   className={styles.ok}
-                  href={downloadFacturaAdjuntoOC(oc.IdOC, a.Id)}
+                  href={
+                    a.Tipo === "FACTURA_SRI"
+                      ? downloadFacturaSriAdjuntoOC(oc.IdOC, a.Id)
+                      : downloadFacturaAdjuntoOC(oc.IdOC, a.Id)
+                  }
                   target="_blank"
                   rel="noreferrer"
                 >
@@ -1622,8 +1779,59 @@ const handleVolver = () => {
                 />
               </label>
 
+            </div>
+
+            <div className={styles.card} style={{ margin: "14px 0" }}>
+              <div className={styles.sectionTitle}>Buscar automáticamente en el SRI</div>
+
+              <div className={styles.formGrid}>
+                <label className={styles.gridFull}>
+                  <span>Fecha de emisión</span>
+                  <input
+                    type="date"
+                    value={sriFecha}
+                    onChange={(e) => setSriFecha(e.target.value)}
+                  />
+                </label>
+              </div>
+
+              <div className={styles.modalActions}>
+                <button
+                  type="button"
+                  className={styles.secondary}
+                  onClick={buscarEnSRI}
+                  disabled={sriSearching}
+                >
+                  {sriSearching ? "Buscando…" : "Buscar en SRI"}
+                </button>
+              </div>
+
+              {sriError && (
+                <p className={styles.note} style={{ color: "#b91c1c" }}>
+                  {sriError}
+                </p>
+              )}
+
+              {sriResultado?.encontrado && (
+                <p className={styles.note}>
+                  ✅ Encontrada en el SRI
+                  {sriResultado.razonSocial ? ` — ${sriResultado.razonSocial}` : ""}
+                  {sriResultado.numeroAutorizacion ? ` · Autorización ${sriResultado.numeroAutorizacion}` : ""}.{" "}
+                  <a
+                    href={facturaSriPdfUrl(sriResultado.pdfUrl)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={styles.ok}
+                  >
+                    Ver PDF
+                  </a>
+                </p>
+              )}
+            </div>
+
+            <div className={styles.formGrid}>
               <label className={styles.gridFull}>
-                <span>Archivo (PDF, XML o Excel)</span>
+                <span>O sube el archivo manualmente (PDF, XML o Excel)</span>
                 <input
                   type="file"
                   accept=".pdf,.xml,.xls,.xlsx,application/pdf,text/xml,application/xml,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -1638,7 +1846,7 @@ const handleVolver = () => {
                 onClick={() => setShowUploadFactura(false)}
                 disabled={uploading}
               >
-                Cancelar
+                {sriResultado?.encontrado ? "Cerrar" : "Cancelar"}
               </button>
               <button
                 className={styles.primary}
@@ -1652,120 +1860,70 @@ const handleVolver = () => {
         </div>
       )}
 
-      {showFacturaForm && factTipo === "SERVICIO" && (
+      {showFacturaForm && (
         <div className={styles.modalOverlay} role="dialog" aria-modal="true">
           <div className={styles.modalBox}>
-            <h3 className={styles.modalTitle}>
-              {factMode === "SIN_APROB"
-                ? "Facturar (sin aprobación) — SERVICIO"
-                : "Datos para facturar — SERVICIO"}
-            </h3>
+          <h3 className={styles.modalTitle}>
+            {factMode === "SIN_APROB"
+              ? `Facturar (sin aprobación) — ${factTipo === "ARTICULO" ? "ARTÍCULO" : "SERVICIO"}`
+              : `Datos para facturar — ${factTipo === "ARTICULO" ? "ARTÍCULO" : "SERVICIO"}`}
+          </h3>
 
-            <div className={styles.formGrid}>
-              <label>
-                <span>Establecimiento</span>
-                <input
-                  value={factEstable}
-                  onChange={(e) => setFactEstable(e.target.value)}
-                  placeholder="001"
-                  maxLength={10}
-                />
-              </label>
-              <label>
-                <span>Punto de emisión</span>
-                <input
-                  value={factPtoEmi}
-                  onChange={(e) => setFactPtoEmi(e.target.value)}
-                  placeholder="002"
-                  maxLength={10}
-                />
-              </label>
-              <label className={styles.gridFull}>
-                <span>Secuencial</span>
-                <input
-                  value={factSecu}
-                  onChange={(e) => setFactSecu(e.target.value)}
-                  placeholder="00001234"
-                  maxLength={20}
-                />
-              </label>
-            </div>
+          <div className={styles.formGrid}>
+            <label>
+              <span>Establecimiento</span>
+              <input
+                value={factEstable}
+                onChange={(e) => setFactEstable(e.target.value)}
+                placeholder="001"
+                maxLength={10}
+              />
+            </label>
+            <label>
+              <span>Punto de emisión</span>
+              <input
+                value={factPtoEmi}
+                onChange={(e) => setFactPtoEmi(e.target.value)}
+                placeholder="002"
+                maxLength={10}
+              />
+            </label>
+            <label className={styles.gridFull}>
+              <span>Secuencial</span>
+              <input
+                value={factSecu}
+                onChange={(e) => setFactSecu(e.target.value)}
+                placeholder="00001234"
+                maxLength={20}
+              />
+            </label>
+          </div>
 
-            <div className={styles.modalActions}>
-              <button className={styles.secondary} onClick={cancelarPrefactura} disabled={sending}>
-                Cancelar
-              </button>
-              <button className={styles.primary} onClick={confirmarPrefactura} disabled={sending}>
-                {sending ? "Enviando..." : "Confirmar"}
-              </button>
-            </div>
+          <div className={styles.modalActions}>
+            <button className={styles.secondary} onClick={cancelarPrefactura} disabled={sending}>
+              Cancelar
+            </button>
+            <button className={styles.primary} onClick={confirmarPrefactura} disabled={sending}>
+              {sending ? "Buscando en SAP..." : "Buscar borrador en SAP"}
+            </button>
+          </div>
           </div>
         </div>
       )}
 
-      {showFacturaForm && factTipo === "ARTICULO" && (
-        <div className={styles.modalOverlay} role="dialog" aria-modal="true">
-          <div className={styles.modalBox}>
-            <h3 className={styles.modalTitle}>
-              {factMode === "SIN_APROB"
-                ? "Facturar (sin aprobación) — ARTÍCULO"
-                : "Datos para facturar — ARTÍCULO"}
-            </h3>
-
-            <div className={styles.formGrid}>
-              <label>
-                <span>Establecimiento</span>
-                <input
-                  value={factEstable}
-                  onChange={(e) => setFactEstable(e.target.value)}
-                  placeholder="001"
-                  maxLength={10}
-                />
-              </label>
-              <label>
-                <span>Punto de emisión</span>
-                <input
-                  value={factPtoEmi}
-                  onChange={(e) => setFactPtoEmi(e.target.value)}
-                  placeholder="002"
-                  maxLength={10}
-                />
-              </label>
-              <label className={styles.gridFull}>
-                <span>Secuencial</span>
-                <input
-                  value={factSecu}
-                  onChange={(e) => setFactSecu(e.target.value)}
-                  placeholder="00001234"
-                  maxLength={20}
-                />
-              </label>
-            </div>
-
-            <div className={styles.modalActions}>
-              <button className={styles.secondary} onClick={cancelarPrefactura} disabled={sending}>
-                Cancelar
-              </button>
-              <button className={styles.primary} onClick={confirmarPrefactura} disabled={sending}>
-                {sending ? "Enviando..." : "Confirmar"}
-              </button>
-            </div>
-          </div>
-        </div>
+      {previewOpen && previewData && (
+        <FacturaPreviewModal
+          open={previewOpen}
+          data={{ ...previewData, IdOC: ocId, OcId: ocId, Tipo: tipoOC }}
+          onClose={() => {
+            setPreviewOpen(false);
+            setPreviewData(null);
+          }}
+          rolNombre={user?.RolNombre}
+          rolId={user?.RolId}
+          modo="ordenes"
+        />
       )}
-
-      <FacturaPreviewModal
-        open={previewOpen}
-        data={previewData ? { ...previewData, IdOC: ocId, OcId: ocId, Tipo: tipoOC } : null}
-        onClose={() => {
-          setPreviewOpen(false);
-          setPreviewData(null);
-        }}
-        onUse={handleUseDraft}
-        rolNombre={user?.RolNombre}
-        rolId={user?.RolId}
-        modo="ordenes"
-      />
       {provInfo && (
         <ProveedorInfoModal
           proveedor={provInfo}

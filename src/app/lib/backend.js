@@ -524,6 +524,10 @@ export function downloadFacturaAdjuntoOC(idOc, idAdj) {
   return apiUrl(`/api/oc/${idOc}/factura/adjunto/${idAdj}/download`);
 }
 
+export function downloadFacturaSriAdjuntoOC(idOc, idAdj) {
+  return apiUrl(`/api/oc/${idOc}/factura-sri/adjunto/${idAdj}/download`);
+}
+
 export async function getFacturaInfoOC(idOC) {
   const res = await fetch(`${API_BASE}/api/oc/${idOC}/factura-info`, {
     method: "GET",
@@ -547,6 +551,49 @@ export async function saveFacturaInfoOC(idOC, payload) {
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.error || "Error al guardar factura-info");
+  return data;
+}
+
+export async function buscarFacturaSriOC(idOC, { cardCode, numeroFactura, fechaEmision }, userEmail) {
+  const res = await fetch(`${API_BASE}/api/oc/${idOC}/factura-sri/buscar`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(userEmail ? { "X-User-Email": userEmail } : {}),
+    },
+    body: JSON.stringify({
+      CardCode: cardCode,
+      NumeroFactura: numeroFactura,
+      FechaEmision: fechaEmision,
+    }),
+    cache: "no-store",
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error || "Error al buscar la factura en el SRI");
+  return data;
+}
+
+export function facturaSriPdfUrl(relativePdfUrl) {
+  return `${API_BASE}${relativePdfUrl}`;
+}
+
+/* ================================
+ * Repositorio de Facturas (búsqueda SRI sin OC de referencia)
+ * ================================ */
+export async function buscarRepositorioFacturas({ numeroFactura, fechaEmision }) {
+  const res = await fetch(`${API_BASE}/api/repositorio-facturas/buscar`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      NumeroFactura: numeroFactura,
+      FechaEmision: fechaEmision,
+    }),
+    cache: "no-store",
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error || "Error al buscar en el repositorio de facturas");
   return data;
 }
 
