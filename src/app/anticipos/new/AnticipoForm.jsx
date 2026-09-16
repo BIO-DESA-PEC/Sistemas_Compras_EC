@@ -3,7 +3,7 @@
 import { useState } from "react";
 import styles from "./anticipoNew.module.css";
 
-const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
+const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "https://compras-back-ec-prod.onrender.com";
 
 export default function AnticipoForm({ user }) {
   const [form, setForm] = useState({
