@@ -248,8 +248,13 @@ export default async function SolicitudesListPage({ searchParams }) {
                       r.Estado === "PENDIENTE" &&
                       (r.AprobadorPendiente || r.NivelPendiente);
 
+                    const aprobadorLabel =
+                      r.NivelPendiente === "COMPRAS"
+                        ? "EQUIPO ADMINISTRATIVO"
+                        : r.AprobadorPendiente || "";
+
                     const tip = hasPend
-                      ? `En aprobación — ${r.AprobadorPendiente || ""}${
+                      ? `En aprobación — ${aprobadorLabel}${
                           r.NivelPendiente ? ` (Nivel ${r.NivelPendiente})` : ""
                         }`
                       : undefined;
@@ -285,7 +290,7 @@ export default async function SolicitudesListPage({ searchParams }) {
                             {hasPend ? (
                               <>
                                 En aprobación —{" "}
-                                <b>{r.AprobadorPendiente || "—"}</b>
+                                <b>{aprobadorLabel || "—"}</b>
                               </>
                             ) : null}
                           </div>

@@ -465,9 +465,11 @@ export default async function OCListPage({ searchParams }) {
                           <div className={styles.subnote}>
                             En aprobación —{" "}
                             <b>
-                              {r.AprobadorPendiente ||
-                                r.NivelPendiente ||
-                                "pendiente"}
+                              {r.NivelPendiente === "COMPRAS"
+                                ? "EQUIPO ADMINISTRATIVO"
+                                : r.AprobadorPendiente ||
+                                  r.NivelPendiente ||
+                                  "pendiente"}
                             </b>
                           </div>
                         ) : null}
