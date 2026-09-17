@@ -10,5 +10,5 @@ export default async function CambiarEstadoAnticipoPage({ params }) {
   const user = await getUserByEmail(session.user.email);
   if (!user) redirect("/");
 
-  return <EstadoAnticipoForm id={params.id} />;
+  return <EstadoAnticipoForm id={params.id} user={user} />;
 }

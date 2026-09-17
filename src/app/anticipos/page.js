@@ -1,7 +1,7 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { getUserByEmail } from "@/app/lib/backend";
-import { Eye, RefreshCw, ChevronLeft, ChevronRight, FileText } from "lucide-react";
+import { Eye, RefreshCw, Banknote, ChevronLeft, ChevronRight, FileText } from "lucide-react";
 import AnticipoFacturarButton from "./AnticipoFacturarButton";
 import styles from "./anticipos.module.css";
 
@@ -38,13 +38,23 @@ function badge(estadoRaw) {
   const cls =
     estado === "PAGADO"
       ? styles.badgePagado
-      : estado === "APROBADA"
+      : estado === "APROBADA" || estado === "APROBADO"
       ? styles.badgeAprobada
-      : estado === "ANULADA" || estado === "RECHAZADA"
+      : estado === "ANULADA" ||
+        estado === "ANULADO" ||
+        estado === "RECHAZADA" ||
+        estado === "RECHAZADO"
       ? styles.badgeRechazada
       : styles.badgePendiente;
 
   return <span className={`${styles.badge} ${cls}`}>{estado}</span>;
+}
+
+function fmtFechaHora(v) {
+  if (!v) return null;
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return v;
+  return d.toLocaleString("es-EC", { dateStyle: "short", timeStyle: "short" });
 }
 
 function ActionButton({ href, title, children, variant = "blue" }) {
@@ -69,6 +79,10 @@ export default async function AnticiposPage({ searchParams }) {
   const puedeVerTodos = puedeVerTodosAnticipos(user);
   const scope = puedeVerTodos ? "all" : "mine";
 
+  const rolActual = (user?.RolNombre || "").trim().toUpperCase();
+  const puedeAdministrativo = rolActual === "COMPRAS" || rolActual === "ADMINISTRADOR";
+  const puedeContabilidad = rolActual === "CONTABILIDAD" || rolActual === "ADMINISTRADOR";
+
   const data = await fetchAnticipos({
     userId: user.IdUsuario,
     scope,
@@ -83,6 +97,13 @@ export default async function AnticiposPage({ searchParams }) {
   const safePage = Math.min(Math.max(currentPage, 1), totalPages);
   const start = (safePage - 1) * pageSize;
   const paginatedItems = items.slice(start, start + pageSize);
+
+  const excelHref = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/anticipos/export-excel?${new URLSearchParams(
+    {
+      userId: String(user.IdUsuario),
+      scope,
+    }
+  ).toString()}`;
 
   return (
     <div className={styles.wrap}>
@@ -99,6 +120,9 @@ export default async function AnticiposPage({ searchParams }) {
         <div className={styles.filters}>
           <a className={`${styles.chip} ${styles.active}`} href="/anticipos">
             Todos
+          </a>
+          <a className={styles.chip} href={excelHref}>
+            Descargar Excel
           </a>
           <a className={styles.primaryChip} href="/anticipos/new">
             Nueva solicitud de anticipo
@@ -123,15 +147,19 @@ export default async function AnticiposPage({ searchParams }) {
                     <th>Monto</th>
                     <th>Beneficiario</th>
                     <th>Motivo</th>
-                    <th>Liquidación</th>
-                    <th>Estado</th>
+                    <th>Fecha de Pago</th>
+                    <th>Estado Administrativo</th>
+                    <th>Estado Contabilidad</th>
                     <th className={styles.center}>Acciones</th>
                   </tr>
                 </thead>
 
                 <tbody>
                   {paginatedItems.map((a) => {
-                    const estado = (a.Estado || "").toUpperCase();
+                    const estadoAdministrativo = (a.EstadoAdministrativo || "PENDIENTE").toUpperCase();
+                    const estadoContabilidad = (a.EstadoContabilidad || "PENDIENTE").toUpperCase();
+                    const cerradoEnAdministrativo =
+                      estadoAdministrativo === "ANULADO" || estadoAdministrativo === "RECHAZADO";
 
                     return (
                       <tr key={a.IdAnticipo}>
@@ -166,9 +194,35 @@ export default async function AnticiposPage({ searchParams }) {
                           {a.Motivo1 || "—"}
                         </td>
 
-                        <td>{fmtDate(a.FechaMaximaLiquidacion)}</td>
+                        <td>
+                          {estadoContabilidad === "PAGADO"
+                            ? fmtDate(a.FechaEstadoContabilidad)
+                            : "—"}
+                        </td>
 
-                        <td>{badge(a.Estado)}</td>
+                        <td>
+                          {badge(a.EstadoAdministrativo)}
+                          {a.FechaEstadoAdministrativo && (
+                            <div className={styles.stateSub}>
+                              {fmtFechaHora(a.FechaEstadoAdministrativo)}
+                              {a.UsuarioEstadoAdministrativo
+                                ? ` — ${a.UsuarioEstadoAdministrativo}`
+                                : ""}
+                            </div>
+                          )}
+                        </td>
+
+                        <td>
+                          {badge(a.EstadoContabilidad)}
+                          {a.FechaEstadoContabilidad && (
+                            <div className={styles.stateSub}>
+                              {fmtFechaHora(a.FechaEstadoContabilidad)}
+                              {a.UsuarioEstadoContabilidad
+                                ? ` — ${a.UsuarioEstadoContabilidad}`
+                                : ""}
+                            </div>
+                          )}
+                        </td>
 
                         <td>
                           <div className={styles.actions}>
@@ -190,17 +244,29 @@ export default async function AnticiposPage({ searchParams }) {
                               </ActionButton>
                             )}
 
-                            {puedeVerTodos && estado !== "ANULADA" && (
+                            {puedeAdministrativo && !cerradoEnAdministrativo && (
                               <ActionButton
-                                href={`/anticipos/${a.IdAnticipo}/estado`}
-                                title="Cambiar estado"
+                                href={`/anticipos/${a.IdAnticipo}/estado?depto=administrativo`}
+                                title="Cambiar estado administrativo"
                                 variant="purple"
                               >
                                 <RefreshCw size={17} />
                               </ActionButton>
                             )}
 
-                            {puedeVerTodos && estado === "PAGADO" && (
+                            {puedeContabilidad &&
+                              estadoAdministrativo === "APROBADO" &&
+                              estadoContabilidad !== "PAGADO" && (
+                              <ActionButton
+                                href={`/anticipos/${a.IdAnticipo}/estado?depto=contabilidad`}
+                                title="Cambiar estado contabilidad"
+                                variant="orange"
+                              >
+                                <Banknote size={17} />
+                              </ActionButton>
+                            )}
+
+                            {puedeVerTodos && estadoContabilidad === "PAGADO" && (
                             <AnticipoFacturarButton
                                 idAnticipo={a.IdAnticipo}
                                 idOC={a.IdOC}

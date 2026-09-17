@@ -183,6 +183,13 @@
   border-color: #fecaca;
 }
 
+.stateSub {
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+}
+
 .actions {
   display: flex;
   align-items: center;
@@ -223,6 +230,12 @@
   background: #ecfdf5;
   color: #16a34a;
   border-color: #bbf7d0;
+}
+
+.actionorange {
+  background: #fff7ed;
+  color: #c2410c;
+  border-color: #fed7aa;
 }
 
 .pagination {

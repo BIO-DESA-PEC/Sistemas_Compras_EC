@@ -19,6 +19,13 @@ function fmtDate(s) {
   return d.toLocaleDateString("es-EC");
 }
 
+function fmtFechaHora(s) {
+  if (!s) return "—";
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return s;
+  return d.toLocaleString("es-EC", { dateStyle: "short", timeStyle: "short" });
+}
+
 export default async function AnticipoDetallePage({ params }) {
   const session = await auth();
   if (!session) redirect("/");
@@ -27,6 +34,10 @@ export default async function AnticipoDetallePage({ params }) {
   if (!user) redirect("/");
 
   const anticipo = await fetchAnticipo(params.id);
+
+  const rol = (user.RolNombre || "").toUpperCase();
+  const puedeAdministrativo = rol === "COMPRAS" || rol === "ADMINISTRADOR";
+  const puedeContabilidad = rol === "CONTABILIDAD" || rol === "ADMINISTRADOR";
 
   return (
     <div className={styles.wrap}>
@@ -38,16 +49,23 @@ export default async function AnticipoDetallePage({ params }) {
             Volver
           </a>
 
-          <a className={styles.chip} href={`/anticipos/${params.id}/estado`}>
-            Cambiar estado
-          </a>
+          {puedeAdministrativo && (
+            <a className={styles.chip} href={`/anticipos/${params.id}/estado?depto=administrativo`}>
+              Cambiar estado administrativo
+            </a>
+          )}
+
+          {puedeContabilidad && (
+            <a className={styles.chip} href={`/anticipos/${params.id}/estado?depto=contabilidad`}>
+              Cambiar estado contabilidad
+            </a>
+          )}
         </div>
       </div>
 
       <div className={styles.card} style={{ padding: 24 }}>
         <h3>Información general</h3>
 
-        <p><b>Estado:</b> {anticipo.Estado}</p>
         <p><b>Solicitante:</b> {anticipo.SolicitanteNombre}</p>
         <p><b>Correo:</b> {anticipo.SolicitanteCorreo}</p>
         <p><b>Departamento:</b> {anticipo.Departamento || "—"}</p>
@@ -65,8 +83,27 @@ export default async function AnticipoDetallePage({ params }) {
 
         <hr />
 
+        <h3>Estado Administrativo (Compras)</h3>
+        <p><b>Estado:</b> {anticipo.EstadoAdministrativo || "PENDIENTE"}</p>
+        <p><b>Observación:</b> {anticipo.ObservacionAdministrativo || "—"}</p>
+        <p>
+          <b>Última actualización:</b> {fmtFechaHora(anticipo.FechaEstadoAdministrativo)}
+          {anticipo.UsuarioEstadoAdministrativo ? ` — ${anticipo.UsuarioEstadoAdministrativo}` : ""}
+        </p>
+
+        <hr />
+
+        <h3>Estado Contabilidad</h3>
+        <p><b>Estado:</b> {anticipo.EstadoContabilidad || "PENDIENTE"}</p>
+        <p><b>Observación:</b> {anticipo.ObservacionContabilidad || "—"}</p>
+        <p>
+          <b>Última actualización:</b> {fmtFechaHora(anticipo.FechaEstadoContabilidad)}
+          {anticipo.UsuarioEstadoContabilidad ? ` — ${anticipo.UsuarioEstadoContabilidad}` : ""}
+        </p>
+
+        <hr />
+
         <p><b>Fecha creación:</b> {anticipo.FechaCreacion || "—"}</p>
-        <p><b>Fecha aprobación:</b> {anticipo.FechaAprobacion || "—"}</p>
       </div>
     </div>
   );
