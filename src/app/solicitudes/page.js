@@ -2,6 +2,7 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { getUserByEmail } from "@/app/lib/backend";
+import DecisionCompraButtons from "./DecisionCompraButtons";
 import styles from "./list.module.css";
 
 const PAGE_SIZE = 15;
@@ -320,6 +321,15 @@ export default async function SolicitudesListPage({ searchParams }) {
                             >
                               PDF
                             </a>
+
+                            {adminCompras &&
+                              r.Estado === "PENDIENTE" &&
+                              r.NivelPendiente === "COMPRAS" && (
+                                <DecisionCompraButtons
+                                  idSolicitud={r.IdSolicitud}
+                                  userId={user.IdUsuario}
+                                />
+                              )}
                           </div>
                         </td>
                       </tr>

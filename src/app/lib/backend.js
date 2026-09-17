@@ -848,3 +848,22 @@ export async function getPendingApprovalDetail(userId, approvalId) {
 
   return data;
 }
+
+export async function decidirSolicitudCompras(idSolicitud, { estado, usuarioId, comentario = "" }) {
+  const url = apiUrl(`/api/solicitudes/${idSolicitud}/decision-compras`);
+
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+    body: JSON.stringify({
+      Estado: estado,
+      UsuarioId: usuarioId,
+      Comentario: comentario,
+    }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error || "No se pudo registrar la decisión.");
+  return data;
+}
