@@ -29,22 +29,22 @@ export default function DecisionCompraButtons({ idSolicitud, userId }) {
     <>
       <button
         type="button"
-        className={styles.btn}
+        className={`${styles.iconBtn} ${styles.iconApprove}`}
         disabled={loading}
         title="Aprobar"
         onClick={() => decidir("APROBADA")}
       >
-        <Check size={16} />
+        <Check size={17} />
       </button>
 
       <button
         type="button"
-        className={styles.btnGhost}
+        className={`${styles.iconBtn} ${styles.iconReject}`}
         disabled={loading}
         title="Rechazar"
         onClick={() => decidir("RECHAZADA")}
       >
-        <X size={16} />
+        <X size={17} />
       </button>
     </>
   );
