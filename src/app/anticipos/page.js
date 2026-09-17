@@ -228,6 +228,12 @@ export default async function AnticiposPage({ searchParams }) {
                     const estadoContabilidad = (a.EstadoContabilidad || "PENDIENTE").toUpperCase();
                     const cerradoEnAdministrativo =
                       estadoAdministrativo === "ANULADO" || estadoAdministrativo === "RECHAZADO";
+                    // Una aprobacion/rechazo por el link de correo llega al buzon
+                    // compartido de Compras, no a una persona puntual: si no quedo
+                    // un usuario especifico (cambio manual), se atribuye al equipo.
+                    const usuarioAdministrativo =
+                      a.UsuarioEstadoAdministrativo ||
+                      (estadoAdministrativo !== "PENDIENTE" ? "EQUIPO ADMINISTRATIVO" : null);
 
                     return (
                       <tr key={a.IdAnticipo}>
@@ -273,9 +279,7 @@ export default async function AnticiposPage({ searchParams }) {
                           {a.FechaEstadoAdministrativo && (
                             <div className={styles.stateSub}>
                               {fmtFechaHora(a.FechaEstadoAdministrativo)}
-                              {a.UsuarioEstadoAdministrativo
-                                ? ` — ${a.UsuarioEstadoAdministrativo}`
-                                : ""}
+                              {usuarioAdministrativo ? ` — ${usuarioAdministrativo}` : ""}
                             </div>
                           )}
                         </td>

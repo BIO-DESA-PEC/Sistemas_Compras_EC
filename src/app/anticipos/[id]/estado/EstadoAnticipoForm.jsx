@@ -197,7 +197,12 @@ export default function EstadoAnticipoForm({ id, user }) {
           estadoActual={anticipo.EstadoAdministrativo}
           observacionActual={anticipo.ObservacionAdministrativo}
           fechaActual={anticipo.FechaEstadoAdministrativo}
-          usuarioActual={anticipo.UsuarioEstadoAdministrativo}
+          usuarioActual={
+            anticipo.UsuarioEstadoAdministrativo ||
+            (anticipo.EstadoAdministrativo && anticipo.EstadoAdministrativo !== "PENDIENTE"
+              ? "EQUIPO ADMINISTRATIVO"
+              : null)
+          }
           onGuardar={(estado, observacion) => guardarEstado("estado-administrativo", estado, observacion)}
         />
       )}

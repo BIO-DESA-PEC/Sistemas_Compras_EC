@@ -88,7 +88,11 @@ export default async function AnticipoDetallePage({ params }) {
         <p><b>Observación:</b> {anticipo.ObservacionAdministrativo || "—"}</p>
         <p>
           <b>Última actualización:</b> {fmtFechaHora(anticipo.FechaEstadoAdministrativo)}
-          {anticipo.UsuarioEstadoAdministrativo ? ` — ${anticipo.UsuarioEstadoAdministrativo}` : ""}
+          {" — "}
+          {anticipo.UsuarioEstadoAdministrativo ||
+            (anticipo.EstadoAdministrativo && anticipo.EstadoAdministrativo !== "PENDIENTE"
+              ? "EQUIPO ADMINISTRATIVO"
+              : "—")}
         </p>
 
         <hr />
