@@ -5,9 +5,17 @@ import styles from "./anticipoNew.module.css";
 
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "https://compras-back-ec-prod.onrender.com";
 
+function todayISO() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 export default function AnticipoForm({ user }) {
   const [form, setForm] = useState({
-    Fecha: "",
+    Fecha: todayISO(),
     Monto: "",
     Moneda: "USD",
     BeneficiarioCheque: "",
@@ -82,7 +90,7 @@ export default function AnticipoForm({ user }) {
       setMsg(`Solicitud creada correctamente: ${data.Codigo}`);
 
       setForm({
-        Fecha: "",
+        Fecha: todayISO(),
         Monto: "",
         Moneda: "USD",
         BeneficiarioCheque: "",
@@ -187,12 +195,13 @@ export default function AnticipoForm({ user }) {
           </label>
 
           <label>
-            Fecha máxima de liquidación
+            Fecha máxima de pago
             <input
               name="FechaMaximaLiquidacion"
               type="date"
               value={form.FechaMaximaLiquidacion}
               onChange={handleChange}
+              min={todayISO()}
               required
             />
           </label>

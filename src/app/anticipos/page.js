@@ -14,11 +14,15 @@ function puedeVerTodosAnticipos(user) {
     r === "CONTABILIDAD"
   );
 }
-async function fetchAnticipos({ userId, scope }) {
+async function fetchAnticipos({ userId, scope, filtros }) {
   const base = process.env.NEXT_PUBLIC_BACKEND_URL;
   const url = new URL(`${base}/api/anticipos`);
   url.searchParams.set("userId", userId);
   url.searchParams.set("scope", scope);
+
+  Object.entries(filtros || {}).forEach(([k, v]) => {
+    if (v) url.searchParams.set(k, v);
+  });
 
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) throw new Error(await res.text());
@@ -83,9 +87,26 @@ export default async function AnticiposPage({ searchParams }) {
   const puedeAdministrativo = rolActual === "COMPRAS" || rolActual === "ADMINISTRADOR";
   const puedeContabilidad = rolActual === "CONTABILIDAD" || rolActual === "ADMINISTRADOR";
 
+  const q = (searchParams?.q || "").toString().trim();
+  const estadoAdministrativoF = (searchParams?.estadoAdministrativo || "").toString().trim();
+  const estadoContabilidadF = (searchParams?.estadoContabilidad || "").toString().trim();
+  const fechaDesde = (searchParams?.fechaDesde || "").toString().trim();
+  const fechaHasta = (searchParams?.fechaHasta || "").toString().trim();
+
+  const filtros = {
+    q,
+    estadoAdministrativo: estadoAdministrativoF,
+    estadoContabilidad: estadoContabilidadF,
+    fechaDesde,
+    fechaHasta,
+  };
+
+  const hayFiltros = Object.values(filtros).some(Boolean);
+
   const data = await fetchAnticipos({
     userId: user.IdUsuario,
     scope,
+    filtros,
   });
 
   const items = data.items || [];
@@ -98,12 +119,24 @@ export default async function AnticiposPage({ searchParams }) {
   const start = (safePage - 1) * pageSize;
   const paginatedItems = items.slice(start, start + pageSize);
 
+  const paramsBase = {
+    userId: String(user.IdUsuario),
+    scope,
+    ...Object.fromEntries(Object.entries(filtros).filter(([, v]) => v)),
+  };
+
   const excelHref = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/anticipos/export-excel?${new URLSearchParams(
-    {
-      userId: String(user.IdUsuario),
-      scope,
-    }
+    paramsBase
   ).toString()}`;
+
+  const buildPageLink = (page) => {
+    const qs = new URLSearchParams(
+      Object.fromEntries(Object.entries(filtros).filter(([, v]) => v))
+    );
+    if (page > 1) qs.set("page", String(page));
+    const s = qs.toString();
+    return `/anticipos${s ? `?${s}` : ""}`;
+  };
 
   return (
     <div className={styles.wrap}>
@@ -129,6 +162,41 @@ export default async function AnticiposPage({ searchParams }) {
           </a>
         </div>
       </div>
+
+      <form className={styles.filterBar} action="/anticipos" method="get">
+        <input
+          type="text"
+          name="q"
+          placeholder="Buscar por código, beneficiario, motivo, CI/RUC o solicitante"
+          defaultValue={q}
+        />
+
+        <select name="estadoAdministrativo" defaultValue={estadoAdministrativoF}>
+          <option value="">Estado Administrativo: Todos</option>
+          <option value="PENDIENTE">Pendiente</option>
+          <option value="APROBADO">Aprobado</option>
+          <option value="RECHAZADO">Rechazado</option>
+          <option value="ANULADO">Anulado</option>
+        </select>
+
+        <select name="estadoContabilidad" defaultValue={estadoContabilidadF}>
+          <option value="">Estado Contabilidad: Todos</option>
+          <option value="PENDIENTE">Pendiente</option>
+          <option value="PAGADO">Pagado</option>
+          <option value="RECHAZADO">Rechazado</option>
+        </select>
+
+        <input type="date" name="fechaDesde" defaultValue={fechaDesde} title="Fecha desde" />
+        <input type="date" name="fechaHasta" defaultValue={fechaHasta} title="Fecha hasta" />
+
+        <button type="submit">Filtrar</button>
+
+        {hayFiltros && (
+          <a className={styles.clearLink} href="/anticipos">
+            Limpiar filtros
+          </a>
+        )}
+      </form>
 
       <div className={styles.card}>
         {items.length === 0 ? (
@@ -293,7 +361,7 @@ export default async function AnticiposPage({ searchParams }) {
                   className={`${styles.pageBtn} ${
                     safePage === 1 ? styles.disabled : ""
                   }`}
-                  href={safePage === 1 ? "#" : `/anticipos?page=${safePage - 1}`}
+                  href={safePage === 1 ? "#" : buildPageLink(safePage - 1)}
                 >
                   <ChevronLeft size={16} />
                   Anterior
@@ -308,9 +376,7 @@ export default async function AnticiposPage({ searchParams }) {
                     safePage === totalPages ? styles.disabled : ""
                   }`}
                   href={
-                    safePage === totalPages
-                      ? "#"
-                      : `/anticipos?page=${safePage + 1}`
+                    safePage === totalPages ? "#" : buildPageLink(safePage + 1)
                   }
                 >
                   Siguiente
