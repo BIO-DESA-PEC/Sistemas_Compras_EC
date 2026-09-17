@@ -131,7 +131,7 @@ export default function AnticipoForm({ user }) {
               name="Fecha"
               type="date"
               value={form.Fecha}
-              onChange={handleChange}
+              disabled
               required
             />
           </label>
