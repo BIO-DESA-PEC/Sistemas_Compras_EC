@@ -580,13 +580,24 @@ function construirReferencia(serie, ptoEmi, secuencial) {
     (async () => {
       try {
         const [a, b] = await Promise.all([
-          fetch(`${base}/api/dimensiones/linea`).then(r => r.json()),
-          fetch(`${base}/api/dimensiones/region`).then(r => r.json()),
+          fetch(`${base}/api/dimensiones/linea`).then(async r => {
+            if (!r.ok) throw new Error('No se pudieron cargar las líneas.');
+            const list = await r.json();
+            if (!Array.isArray(list)) throw new Error('Respuesta inválida al cargar las líneas.');
+            return list.filter(d => d && typeof d === 'object');
+          }),
+          fetch(`${base}/api/dimensiones/region`).then(async r => {
+            if (!r.ok) throw new Error('No se pudieron cargar las regiones.');
+            const list = await r.json();
+            if (!Array.isArray(list)) throw new Error('Respuesta inválida al cargar las regiones.');
+            return list.filter(d => d && typeof d === 'object');
+          }),
         ]);
         setDLinea(a || []);
         setDRegion(b || []);
       } catch (e) {
         console.error(e);
+        setMsg({ type: 'err', text: 'No se pudieron cargar las líneas y regiones. Cierra la factura y vuelve a consultarla.' });
       }
     })();
   }, [open]);

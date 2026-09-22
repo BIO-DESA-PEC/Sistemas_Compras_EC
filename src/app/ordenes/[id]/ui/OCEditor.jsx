@@ -26,6 +26,7 @@ import {
 } from "@/app/lib/backend";
 import { useSession } from "next-auth/react";
 import ProveedorInfoModal from "@/components/ProveedorInfoModal";
+import FacturaPreviewBoundary from "@/components/FacturaPreviewBoundary";
 import styles from "../orden.module.css";
 import ProveedorPicker from "@/components/SupplierSelect";
 
@@ -770,7 +771,7 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
             OcId: oc.IdOC,
             ModoCrearManual: true,
             EsCrearManual: true,
-            TipoOC: factTipo || t || oc?.Tipo || "SERVICIO",
+            TipoOC: factTipo || oc?.Tipo || "SERVICIO",
           });
 
           setFacturaCabecera(prev?.Cabecera || null);
@@ -794,7 +795,7 @@ export default function OCEditor({ oc, detalleInicial, modoDirecto = false }) {
     } finally {
       setSending(false);
     }
-  }, [factEstable, factPtoEmi, factSecu, factCardCode, factProveedorNom, getProveedorPrincipal, oc.IdOC]);
+  }, [factEstable, factPtoEmi, factSecu, factCardCode, factProveedorNom, factTipo, getProveedorPrincipal, oc.IdOC, oc?.Tipo]);
 
   const cancelarPrefactura = useCallback(() => {
     setShowFacturaForm(false);
@@ -1912,6 +1913,10 @@ const handleVolver = () => {
       )}
 
       {previewOpen && previewData && (
+        <FacturaPreviewBoundary ocId={ocId} onClose={() => {
+          setPreviewOpen(false);
+          setPreviewData(null);
+        }}>
         <FacturaPreviewModal
           open={previewOpen}
           data={{ ...previewData, IdOC: ocId, OcId: ocId, Tipo: tipoOC }}
@@ -1923,6 +1928,7 @@ const handleVolver = () => {
           rolId={user?.RolId}
           modo="ordenes"
         />
+        </FacturaPreviewBoundary>
       )}
       {provInfo && (
         <ProveedorInfoModal
