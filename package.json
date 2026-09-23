@@ -20,6 +20,7 @@
     "next-auth": "^5.0.0-beta.29",
     "react": "19.1.0",
     "react-country-region-selector": "^4.0.2",
+    "react-datepicker": "^9.1.0",
     "react-dom": "19.1.0",
     "react-select": "^5.10.2",
     "react-select-country-list": "^2.2.3",

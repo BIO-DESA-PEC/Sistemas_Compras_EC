@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import ProveedorAutocomplete from "./ProveedorAutocomplete";
+import FechaPagoPicker from "./FechaPagoPicker";
 import styles from "./anticipoNew.module.css";
 
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "https://compras-back-ec-prod.onrender.com";
@@ -12,11 +13,6 @@ function todayISO() {
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
-}
-
-function esViernes(iso) {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y, m - 1, d).getDay() === 5;
 }
 
 export default function AnticipoForm({ user }) {
@@ -35,30 +31,10 @@ export default function AnticipoForm({ user }) {
   const [loading, setLoading] = useState(false);
   const [archivoPdf, setArchivoPdf] = useState(null);
   const [msg, setMsg] = useState("");
-  const [fechaPagoError, setFechaPagoError] = useState("");
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleFechaPagoChange = (e) => {
-    const value = e.target.value;
-
-    if (!value) {
-      setFechaPagoError("");
-      setForm((prev) => ({ ...prev, FechaMaximaLiquidacion: "" }));
-      return;
-    }
-
-    if (!esViernes(value)) {
-      setFechaPagoError("Solo se permiten días viernes.");
-      setForm((prev) => ({ ...prev, FechaMaximaLiquidacion: "" }));
-      return;
-    }
-
-    setFechaPagoError("");
-    setForm((prev) => ({ ...prev, FechaMaximaLiquidacion: value }));
   };
 
   const guardar = async (e) => {
@@ -67,6 +43,11 @@ export default function AnticipoForm({ user }) {
 
     if (!user?.IdUsuario) {
       setMsg("No se pudo obtener el usuario.");
+      return;
+    }
+
+    if (!form.FechaMaximaLiquidacion) {
+      setMsg("Selecciona la fecha máxima de pago (debe ser un viernes).");
       return;
     }
 
@@ -231,16 +212,15 @@ export default function AnticipoForm({ user }) {
 
           <label>
             Fecha máxima de pago
-            <input
-              name="FechaMaximaLiquidacion"
-              type="date"
+            <FechaPagoPicker
               value={form.FechaMaximaLiquidacion}
-              onChange={handleFechaPagoChange}
-              min={todayISO()}
-              required
+              onChange={(iso) =>
+                setForm((prev) => ({ ...prev, FechaMaximaLiquidacion: iso }))
+              }
+              minDate={todayISO()}
             />
-            <small className={fechaPagoError ? styles.hintError : styles.hint}>
-              {fechaPagoError || "Solo se permiten días viernes."}
+            <small className={styles.hint}>
+              Solo se permiten días viernes.
             </small>
           </label>
 
@@ -278,7 +258,7 @@ export default function AnticipoForm({ user }) {
             />
           </label>
 
-          <button type="submit" disabled={loading}>
+          <button type="submit" className={styles.submitBtn} disabled={loading}>
             {loading ? "Enviando..." : "Enviar solicitud"}
           </button>
 

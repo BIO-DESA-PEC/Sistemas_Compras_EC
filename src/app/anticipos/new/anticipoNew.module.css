@@ -104,7 +104,9 @@
   align-items: flex-start;
   width: 100%;
   border: 0;
-  background: none;
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: transparent;
   text-align: left;
   padding: 8px 10px;
   border-radius: 8px;
@@ -112,8 +114,9 @@
   font-weight: 400;
 }
 
-.autocompleteItem:hover {
-  background: #f1f5f9;
+.autocompleteItem:hover,
+.autocompleteItem:focus {
+  background-color: #f1f5f9;
 }
 
 .autocompleteName {
@@ -135,7 +138,7 @@
   font-weight: 400;
 }
 
-.form button {
+.submitBtn {
   grid-column: 1 / -1;
   border: none;
   background: #16a34a;
@@ -146,7 +149,7 @@
   cursor: pointer;
 }
 
-.form button:disabled {
+.submitBtn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -157,6 +160,29 @@
   border-radius: 10px;
   padding: 12px;
   font-weight: 600;
+}
+
+.fechaPagoWrapper {
+  display: block;
+  width: 100%;
+}
+
+.fechaPagoInput {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 11px 12px;
+  font-size: 14px;
+  outline: none;
+  cursor: pointer;
+  background: #fff;
+  color: #0f172a;
+}
+
+.fechaPagoInput:focus {
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 3px rgba(147, 197, 253, 0.35);
 }
 
 @media (max-width: 768px) {
