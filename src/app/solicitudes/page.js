@@ -12,7 +12,7 @@ function isAdminCompras(user) {
   return r === "ADMINISTRADOR" || r === "COMPRAS";
 }
 
-async function fetchList({ userId, estado, scope, historico }) {
+async function fetchList({ userId, estado, scope, historico, q }) {
   const base = process.env.NEXT_PUBLIC_BACKEND_URL;
   const u = new URL(`${base}/api/solicitudes`);
 
@@ -23,6 +23,7 @@ async function fetchList({ userId, estado, scope, historico }) {
 
   if (estado) u.searchParams.set("estado", estado);
   if (historico === "Y") u.searchParams.set("historico", "Y");
+  if (q) u.searchParams.set("q", q);
 
   const res = await fetch(u, { cache: "no-store" });
   if (!res.ok) throw new Error(await res.text());
@@ -50,6 +51,7 @@ export default async function SolicitudesListPage({ searchParams }) {
 
   const estado = searchParams?.estado || "";
   const historico = searchParams?.historico === "Y" ? "Y" : "N";
+  const q = (searchParams?.q || "").toString().trim();
 
   const pageParam = parseInt(searchParams?.page || "1", 10);
   const currentPage = Number.isNaN(pageParam) || pageParam < 1 ? 1 : pageParam;
@@ -61,6 +63,7 @@ export default async function SolicitudesListPage({ searchParams }) {
     estado,
     scope,
     historico,
+    q,
   });
 
   const items = data.items || [];
@@ -96,10 +99,11 @@ export default async function SolicitudesListPage({ searchParams }) {
 
     if (newEstado) qs.set("estado", newEstado);
     if (newHistorico === "Y") qs.set("historico", "Y");
+    if (q) qs.set("q", q);
     if (page > 1) qs.set("page", String(page));
 
-    const q = qs.toString();
-    return `/solicitudes${q ? `?${q}` : ""}`;
+    const s = qs.toString();
+    return `/solicitudes${s ? `?${s}` : ""}`;
   };
 
   const pageNumbers = () => {
@@ -217,6 +221,44 @@ export default async function SolicitudesListPage({ searchParams }) {
               Históricas
             </a>
           </div>
+        </div>
+
+        <div className={styles.filterGroup}>
+          <span className={styles.filterLabel}>Buscar</span>
+
+          <form className={styles.searchForm} action="/solicitudes" method="get">
+            {estado && <input type="hidden" name="estado" value={estado} />}
+            {historico === "Y" && (
+              <input type="hidden" name="historico" value="Y" />
+            )}
+
+            <input
+              type="text"
+              name="q"
+              defaultValue={q}
+              placeholder="N° de solicitud o solicitante"
+              className={styles.searchInput}
+            />
+
+            <button type="submit" className={styles.searchButton}>
+              Buscar
+            </button>
+
+            {q && (
+              <a
+                className={styles.searchClear}
+                href={(() => {
+                  const qs = new URLSearchParams();
+                  if (estado) qs.set("estado", estado);
+                  if (historico === "Y") qs.set("historico", "Y");
+                  const s = qs.toString();
+                  return `/solicitudes${s ? `?${s}` : ""}`;
+                })()}
+              >
+                Limpiar
+              </a>
+            )}
+          </form>
         </div>
       </div>
 
