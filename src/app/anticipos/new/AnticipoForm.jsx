@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import ProveedorAutocomplete from "./ProveedorAutocomplete";
 import styles from "./anticipoNew.module.css";
 
@@ -14,41 +14,9 @@ function todayISO() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function isoDeFecha(d) {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-// Fecha máxima de pago: solo se puede elegir viernes. En vez de dejar
-// escoger cualquier fecha y validar después, se ofrecen directamente los
-// próximos viernes (así no hay forma de seleccionar otro día).
-function proximosViernes(cantidad = 26) {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  while (d.getDay() !== 5) {
-    d.setDate(d.getDate() + 1);
-  }
-
-  const out = [];
-  for (let i = 0; i < cantidad; i++) {
-    out.push(isoDeFecha(d));
-    d.setDate(d.getDate() + 7);
-  }
-  return out;
-}
-
-function fmtViernes(iso) {
+function esViernes(iso) {
   const [y, m, d] = iso.split("-").map(Number);
-  const fecha = new Date(y, m - 1, d);
-  const texto = fecha.toLocaleDateString("es-EC", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-  return texto.charAt(0).toUpperCase() + texto.slice(1);
+  return new Date(y, m - 1, d).getDay() === 5;
 }
 
 export default function AnticipoForm({ user }) {
@@ -67,12 +35,30 @@ export default function AnticipoForm({ user }) {
   const [loading, setLoading] = useState(false);
   const [archivoPdf, setArchivoPdf] = useState(null);
   const [msg, setMsg] = useState("");
-
-  const viernesDisponibles = useMemo(() => proximosViernes(), []);
+  const [fechaPagoError, setFechaPagoError] = useState("");
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleFechaPagoChange = (e) => {
+    const value = e.target.value;
+
+    if (!value) {
+      setFechaPagoError("");
+      setForm((prev) => ({ ...prev, FechaMaximaLiquidacion: "" }));
+      return;
+    }
+
+    if (!esViernes(value)) {
+      setFechaPagoError("Solo se permiten días viernes.");
+      setForm((prev) => ({ ...prev, FechaMaximaLiquidacion: "" }));
+      return;
+    }
+
+    setFechaPagoError("");
+    setForm((prev) => ({ ...prev, FechaMaximaLiquidacion: value }));
   };
 
   const guardar = async (e) => {
@@ -245,21 +231,16 @@ export default function AnticipoForm({ user }) {
 
           <label>
             Fecha máxima de pago
-            <select
+            <input
               name="FechaMaximaLiquidacion"
+              type="date"
               value={form.FechaMaximaLiquidacion}
-              onChange={handleChange}
+              onChange={handleFechaPagoChange}
+              min={todayISO()}
               required
-            >
-              <option value="">Selecciona un viernes</option>
-              {viernesDisponibles.map((iso) => (
-                <option key={iso} value={iso}>
-                  {fmtViernes(iso)}
-                </option>
-              ))}
-            </select>
-            <small className={styles.hint}>
-              Solo se permiten días viernes.
+            />
+            <small className={fechaPagoError ? styles.hintError : styles.hint}>
+              {fechaPagoError || "Solo se permiten días viernes."}
             </small>
           </label>
 

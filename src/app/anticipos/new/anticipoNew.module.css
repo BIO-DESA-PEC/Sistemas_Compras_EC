@@ -68,6 +68,12 @@
   font-size: 12px;
 }
 
+.hintError {
+  font-weight: 600;
+  color: #dc2626;
+  font-size: 12px;
+}
+
 .autocomplete {
   position: relative;
 }
