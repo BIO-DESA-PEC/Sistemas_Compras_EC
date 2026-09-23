@@ -618,6 +618,11 @@ export async function validarFacturaDuplicadaOC({
 /* ================================
  * Proveedores SAP
  * ================================ */
+export async function getProveedores({ q = "", limit = 15 } = {}) {
+  const url = apiUrl("/api/proveedores", { q, limit });
+  return fetchJSON(url, { method: "GET" });
+}
+
 export async function getProveedoresSap({ q = "", top = 50 } = {}) {
   const url = apiUrl("/api/proveedores-sap", { q, top });
   return fetchJSON(url, { method: "GET" });
